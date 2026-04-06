@@ -1,5 +1,10 @@
-import {StyleSheet} from 'react-native';
+import {Dimensions, StyleSheet} from 'react-native';
 import {spacing} from '..';
+
+const {height: screenHeight} = Dimensions.get('window');
+
+const isShortScreen = screenHeight <= 820;
+const isVeryShortScreen = screenHeight <= 760;
 
 export const styles = StyleSheet.create({
   content: {
@@ -223,30 +228,31 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    marginTop: 2,
   },
 
   actionCard: {
     width: '48.2%',
     backgroundColor: '#121212',
     borderRadius: 22,
-    minHeight: 138,
-    paddingVertical: spacing.lg,
+    height: isVeryShortScreen ? 98 : isShortScreen ? 108 : 118,
+    paddingVertical: isVeryShortScreen ? 10 : 12,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: isVeryShortScreen ? 10 : 12,
     borderWidth: 1,
     borderColor: '#1D1D1D',
   },
 
   actionIcon: {
-    fontSize: 38,
-    marginBottom: spacing.sm,
+    fontSize: isVeryShortScreen ? 26 : isShortScreen ? 28 : 30,
+    marginBottom: isVeryShortScreen ? 6 : 8,
   },
 
   actionTitle: {
     color: '#F4F4F4',
-    fontSize: 22,
+    fontSize: isVeryShortScreen ? 15 : isShortScreen ? 16 : 18,
     fontWeight: '900',
     textAlign: 'center',
     letterSpacing: 0.3,
