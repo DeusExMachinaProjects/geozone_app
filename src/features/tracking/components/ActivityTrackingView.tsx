@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React from 'react';
 import {
   Modal,
   Pressable,
@@ -8,50 +8,15 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {
-  Camera,
-  CircleLayer,
-  LineLayer,
-  MapView,
-  ShapeSource,
-} from '@maplibre/maplibre-react-native';
 import {styles} from '../../../theme/screens/ActivityTrackingScreen.styles';
 import type {ActivityType} from '../types';
 import type {UseActivityTrackingResult} from '../hooks/useActivityTracking';
+import {TrackingMap} from './TrackingMap';
 
 type Props = {
   activityType: ActivityType;
   tracking: UseActivityTrackingResult;
   onBack: () => void;
-};
-
-const DEFAULT_COORDINATE = {
-  latitude: -33.4489,
-  longitude: -70.6693,
-};
-
-const DEFAULT_ZOOM = 15.5;
-
-const MAP_STYLE: any = {
-  version: 8,
-  name: 'GeoZone OSM Raster',
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
-    },
-  },
-  layers: [
-    {
-      id: 'osm-base',
-      type: 'raster',
-      source: 'osm',
-      minzoom: 0,
-      maxzoom: 19,
-    },
-  ],
 };
 
 function getCopy(activityType: ActivityType) {
@@ -68,6 +33,10 @@ function getCopy(activityType: ActivityType) {
   };
 }
 
+function formatCoordinate(value: number) {
+  return value.toFixed(6);
+}
+
 export function ActivityTrackingView({
   activityType,
   tracking,
@@ -75,65 +44,17 @@ export function ActivityTrackingView({
 }: Props) {
   const insets = useSafeAreaInsets();
   const {height} = useWindowDimensions();
-  const cameraRef = useRef<any>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   const copy = getCopy(activityType);
-  const mapHeight = Math.max(210, Math.min(270, height * 0.29));
+  const mapHeight = Math.max(210, Math.min(290, height * 0.33));
   const statCardHeight = height < 760 ? 82 : 90;
-
-  const lineShape = useMemo(() => {
-    if (tracking.route.length < 2) {
-      return null;
-    }
-
-    return {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: tracking.route.map(point => [point.longitude, point.latitude]),
-      },
-    };
-  }, [tracking.route]);
-
-  const pointShape = useMemo(() => {
-    if (!tracking.currentLocation) {
-      return null;
-    }
-
-    return {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'Point',
-        coordinates: [
-          tracking.currentLocation.longitude,
-          tracking.currentLocation.latitude,
-        ],
-      },
-    };
-  }, [tracking.currentLocation]);
-
-  useEffect(() => {
-    if (!tracking.currentLocation) {
-      return;
-    }
-
-    cameraRef.current?.setCamera({
-      centerCoordinate: [
-        tracking.currentLocation.longitude,
-        tracking.currentLocation.latitude,
-      ],
-      zoomLevel: DEFAULT_ZOOM,
-      animationDuration: 700,
-    });
-  }, [tracking.currentLocation]);
 
   const handleBackFromSummary = () => {
     tracking.closeSummary();
     onBack();
   };
+
+  const hasLocation = Boolean(tracking.currentLocation);
 
   return (
     <View style={styles.container}>
@@ -156,73 +77,61 @@ export function ActivityTrackingView({
           <Text style={styles.subtitle}>{copy.subtitle}</Text>
         </View>
 
-        <View style={[styles.mapCard, {height: mapHeight}]}>
-          <MapView
-            style={styles.map}
-            mapStyle={MAP_STYLE}
-            compassEnabled
-            rotateEnabled
-            pitchEnabled
-            zoomEnabled
-            attributionEnabled
-            logoEnabled={false}
-            onDidFinishLoadingStyle={() => setIsMapLoaded(true)}
-            onDidFailLoadingMap={() => setIsMapLoaded(false)}>
-            <Camera
-              ref={cameraRef}
-              defaultSettings={{
-                centerCoordinate: [
-                  DEFAULT_COORDINATE.longitude,
-                  DEFAULT_COORDINATE.latitude,
-                ],
-                zoomLevel: DEFAULT_ZOOM,
-              }}
-            />
+        <View
+          style={[
+            styles.mapCard,
+            {
+              height: mapHeight,
+              paddingHorizontal: 0,
+              paddingVertical: 0,
+              overflow: 'hidden',
+            },
+          ]}>
+          <TrackingMap
+            route={tracking.route}
+            currentLocation={tracking.currentLocation}
+          />
 
-            {lineShape ? (
-              <ShapeSource id={`${activityType}-route-source`} shape={lineShape}>
-                <LineLayer
-                  id={`${activityType}-route-line`}
-                  style={{
-                    lineColor: '#FF6B52',
-                    lineWidth: 5,
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                  }}
-                />
-              </ShapeSource>
-            ) : null}
+          <View style={styles.mapOverlay}>
+            <Text style={styles.mapOverlayText}>Mapa en vivo</Text>
+          </View>
 
-            {pointShape ? (
-              <ShapeSource id={`${activityType}-point-source`} shape={pointShape}>
-                <CircleLayer
-                  id={`${activityType}-point-outer`}
-                  style={{
-                    circleRadius: 9,
-                    circleColor: '#FFFFFF',
-                    circleOpacity: 0.95,
-                  }}
-                />
-                <CircleLayer
-                  id={`${activityType}-point-inner`}
-                  style={{
-                    circleRadius: 5,
-                    circleColor: '#2563EB',
-                  }}
-                />
-              </ShapeSource>
-            ) : null}
-          </MapView>
+          <View style={styles.mapHint}>
+            <Text style={styles.mapHintText}>
+              {hasLocation
+                ? `${tracking.route.length} puntos registrados`
+                : 'Esperando GPS'}
+            </Text>
+          </View>
+        </View>
 
-          {!isMapLoaded ? (
-            <View style={styles.mapOverlay}>
-              <Text style={styles.mapOverlayText}>Cargando mapa…</Text>
-            </View>
-          ) : null}
+        <View
+          style={{
+            marginTop: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+          }}>
+          <Text
+            style={{
+              color: '#9CA3AF',
+              fontSize: 13,
+              textAlign: 'center',
+              lineHeight: 18,
+            }}>
+            {hasLocation
+              ? 'La ruta y la posición actual se actualizan en vivo.'
+              : 'Activa el GPS o simula una ruta en el emulador para dibujar el recorrido.'}
+          </Text>
 
-          {!tracking.currentLocation ? (
-            <View style={styles.mapHint}>
-              <Text style={styles.mapHintText}>Esperando ubicación…</Text>
+          {hasLocation && tracking.currentLocation ? (
+            <View style={{marginTop: 4, alignItems: 'center', gap: 4}}>
+              <Text style={{color: '#E5E7EB', fontSize: 12}}>
+                Lat: {formatCoordinate(tracking.currentLocation.latitude)}
+              </Text>
+              <Text style={{color: '#E5E7EB', fontSize: 12}}>
+                Lng: {formatCoordinate(tracking.currentLocation.longitude)}
+              </Text>
             </View>
           ) : null}
         </View>

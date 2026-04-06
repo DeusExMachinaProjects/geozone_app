@@ -1,71 +1,63 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Linking, PermissionsAndroid, Platform} from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
-import Geolocation from '@react-native-community/geolocation';
+import {AppState, Linking, PermissionsAndroid, Platform} from 'react-native';
 import type {
   ActivityType,
   RunStatus,
   TrackingPoint,
   TrackingSummary,
 } from '../types';
+import {
+  deriveErrorMessage,
+  formatDistanceKm,
+  formatElapsedFromMs,
+  formatSpeedKmh,
+  isSamePoint,
+} from '../utils/trackingCalculations';
+import {
+  getNativeTrackingSnapshot,
+  openNativeLocationSettings,
+  pauseNativeTracking,
+  resumeNativeTracking,
+  startNativeTracking,
+  stopNativeTracking,
+  type NativeTrackingSnapshot,
+} from '../../../services/location';
 
 type UseActivityTrackingParams = {
   activityType: ActivityType;
 };
 
-function toRad(value: number) {
-  return (value * Math.PI) / 180;
-}
-
-function calculateDistanceInMeters(start: TrackingPoint, end: TrackingPoint) {
-  const R = 6371000;
-  const dLat = toRad(end.latitude - start.latitude);
-  const dLon = toRad(end.longitude - start.longitude);
-  const lat1 = toRad(start.latitude);
-  const lat2 = toRad(end.latitude);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function formatElapsed(seconds: number) {
-  const hrs = Math.floor(seconds / 3600)
-    .toString()
-    .padStart(2, '0');
-  const mins = Math.floor((seconds % 3600) / 60)
-    .toString()
-    .padStart(2, '0');
-  const secs = Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0');
-
-  return `${hrs}:${mins}:${secs}`;
-}
-
-function formatDistanceKm(meters: number) {
-  return (meters / 1000).toFixed(2);
-}
-
-function formatSpeedKmh(speedMps: number) {
-  return (speedMps * 3.6).toFixed(1);
-}
-
 function getActivityConfig(activityType: ActivityType) {
   if (activityType === 'ride') {
     return {
-      minDistanceDeltaMeters: 1.5,
       summaryTitle: 'Pedaleo finalizado',
     };
   }
 
   return {
-    minDistanceDeltaMeters: 0.5,
     summaryTitle: 'Carrera finalizada',
   };
+}
+
+function getReadableError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as {message?: unknown}).message === 'string'
+  ) {
+    return (error as {message: string}).message;
+  }
+
+  return fallback;
 }
 
 export function useActivityTracking({
@@ -73,25 +65,28 @@ export function useActivityTracking({
 }: UseActivityTrackingParams) {
   const config = useMemo(() => getActivityConfig(activityType), [activityType]);
 
-  const watchIdRef = useRef<number | null>(null);
-  const totalDistanceRef = useRef(0);
-  const lastTimestampRef = useRef<number | null>(null);
-
   const [status, setStatus] = useState<RunStatus>('preparing');
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [distanceMeters, setDistanceMeters] = useState(0);
   const [route, setRoute] = useState<TrackingPoint[]>([]);
   const [currentLocation, setCurrentLocation] = useState<TrackingPoint | null>(
     null,
   );
   const [currentSpeedMps, setCurrentSpeedMps] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<TrackingSummary | null>(null);
 
+  const appStateRef = useRef(AppState.currentState);
+  const gpsPromptedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const initialStartAttemptedRef = useRef(false);
+  const permissionFlowRef = useRef<Promise<boolean> | null>(null);
+  const notificationAskedRef = useRef(false);
+
   const distanceKm = useMemo(
-    () => formatDistanceKm(totalDistanceRef.current),
-    [route],
+    () => formatDistanceKm(distanceMeters),
+    [distanceMeters],
   );
 
   const speedKmh = useMemo(
@@ -100,241 +95,308 @@ export function useActivityTracking({
   );
 
   const averageSpeedKmh = useMemo(() => {
-    if (elapsedSeconds <= 0) {
+    if (elapsedMs <= 0) {
       return '0.0';
     }
 
-    const avgMps = totalDistanceRef.current / elapsedSeconds;
+    const avgMps = distanceMeters / (elapsedMs / 1000);
     return formatSpeedKmh(avgMps);
-  }, [elapsedSeconds, route]);
+  }, [distanceMeters, elapsedMs]);
 
-  const clearLocationWatch = useCallback(() => {
-    if (watchIdRef.current !== null) {
-      Geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-  }, []);
-
-  const appendPoint = useCallback(
-    (point: TrackingPoint) => {
-      setCurrentLocation(point);
-
-      setRoute(prev => {
-        if (prev.length === 0) {
-          totalDistanceRef.current = 0;
-          lastTimestampRef.current = point.timestamp;
-          setCurrentSpeedMps(
-            typeof point.speed === 'number' && point.speed > 0 ? point.speed : 0,
-          );
-          return [point];
-        }
-
-        const lastPoint = prev[prev.length - 1];
-        const segmentDistance = calculateDistanceInMeters(lastPoint, point);
-
-        let nextSpeed = 0;
-
-        if (typeof point.speed === 'number' && point.speed > 0) {
-          nextSpeed = point.speed;
-        } else if (lastTimestampRef.current) {
-          const deltaSeconds = (point.timestamp - lastTimestampRef.current) / 1000;
-          if (deltaSeconds > 0) {
-            nextSpeed = segmentDistance / deltaSeconds;
-          }
-        }
-
-        setCurrentSpeedMps(nextSpeed);
-        lastTimestampRef.current = point.timestamp;
-
-        if (segmentDistance < config.minDistanceDeltaMeters) {
-          return prev;
-        }
-
-        totalDistanceRef.current += segmentDistance;
-        return [...prev, point];
-      });
-    },
-    [config.minDistanceDeltaMeters],
-  );
-
-  const requestLocationPermission = useCallback(async () => {
+  const requestNotificationPermission = useCallback(async () => {
     if (Platform.OS !== 'android') {
-      setHasLocationPermission(true);
       return true;
     }
 
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    if (Platform.Version < 33) {
+      notificationAskedRef.current = true;
+      return true;
+    }
+
+    if (notificationAskedRef.current) {
+      return true;
+    }
+
+    const alreadyGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+    );
+
+    if (alreadyGranted) {
+      notificationAskedRef.current = true;
+      return true;
+    }
+
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
       {
-        title: 'Permiso de ubicación',
-        message: 'GeoZone necesita tu ubicación para registrar la actividad en vivo.',
+        title: 'Notificaciones de actividad',
+        message:
+          'GeoZone necesita mostrar una notificación mientras el seguimiento está activo.',
         buttonPositive: 'Aceptar',
         buttonNegative: 'Cancelar',
       },
     );
 
-    if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-      setHasLocationPermission(false);
+    notificationAskedRef.current = true;
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  }, []);
+
+  const ensureTrackingPermissions = useCallback(async () => {
+    if (Platform.OS !== 'android') {
       return false;
     }
 
-    const allowed = granted === PermissionsAndroid.RESULTS.GRANTED;
-    setHasLocationPermission(allowed);
-    return allowed;
-  }, []);
+    if (permissionFlowRef.current) {
+      return permissionFlowRef.current;
+    }
 
-  const handleLocationError = useCallback((message: string) => {
-    setErrorMessage(message);
-    setStatus('paused');
-    setCurrentSpeedMps(0);
-  }, []);
+    permissionFlowRef.current = (async () => {
+      const finePermission =
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+      const coarsePermission =
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
 
-  const getInitialLocation = useCallback(() => {
-    Geolocation.getCurrentPosition(
-      position => {
-        const point: TrackingPoint = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          timestamp: position.timestamp,
-          speed: position.coords.speed,
-        };
+      const hasFine = await PermissionsAndroid.check(finePermission);
+      const hasCoarse = await PermissionsAndroid.check(coarsePermission);
 
-        setErrorMessage(null);
-        appendPoint(point);
-        setStatus('running');
-      },
-      error => {
-        handleLocationError(error.message);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0,
-      },
-    );
-  }, [appendPoint, handleLocationError]);
+      if (hasFine || hasCoarse) {
+        await requestNotificationPermission();
+        return true;
+      }
 
-  const startWatchingLocation = useCallback(() => {
-    if (!hasLocationPermission || status !== 'running') {
+      const result = await PermissionsAndroid.request(finePermission, {
+        title: 'Permiso de ubicación',
+        message:
+          'GeoZone necesita tu ubicación para registrar tiempo, distancia, velocidad y dibujar la ruta en el mapa.',
+        buttonPositive: 'Aceptar',
+        buttonNegative: 'Cancelar',
+      });
+
+      if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+        if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+          Linking.openSettings().catch(() => {});
+        }
+        return false;
+      }
+
+      await requestNotificationPermission();
+      return true;
+    })().finally(() => {
+      permissionFlowRef.current = null;
+    });
+
+    return permissionFlowRef.current;
+  }, [requestNotificationPermission]);
+
+  const applySnapshot = useCallback(async (snapshot: NativeTrackingSnapshot | null) => {
+    if (!snapshot || !isMountedRef.current) {
       return;
     }
 
-    if (watchIdRef.current !== null) {
+    setElapsedMs(snapshot.elapsedMs);
+    setDistanceMeters(snapshot.distanceMeters);
+    setCurrentSpeedMps(snapshot.speedMps);
+
+    const nextLocation = snapshot.hasLocation ? snapshot.location : null;
+
+    setCurrentLocation(prev =>
+      isSamePoint(prev, nextLocation) ? prev : nextLocation,
+    );
+
+    setRoute(snapshot.route ?? []);
+    setErrorMessage(deriveErrorMessage(snapshot.errorCode));
+
+    setStatus(prev => {
+      if (prev === 'finished') {
+        return prev;
+      }
+
+      if (!snapshot.isActive) {
+        return 'paused';
+      }
+
+      if (snapshot.isPaused) {
+        return 'paused';
+      }
+
+      if (snapshot.hasLocation) {
+        return 'running';
+      }
+
+      if (snapshot.errorCode) {
+        return 'paused';
+      }
+
+      return 'preparing';
+    });
+
+    if (snapshot.errorCode === 'gps_disabled') {
+      if (!gpsPromptedRef.current) {
+        gpsPromptedRef.current = true;
+        try {
+          await openNativeLocationSettings();
+        } catch {}
+      }
+    } else {
+      gpsPromptedRef.current = false;
+    }
+  }, []);
+
+  const syncSnapshot = useCallback(async () => {
+    if (Platform.OS !== 'android') {
+      setErrorMessage(
+        'La versión actual del seguimiento en segundo plano quedó preparada primero para Android.',
+      );
+      return null;
+    }
+
+    try {
+      const snapshot = await getNativeTrackingSnapshot();
+      await applySnapshot(snapshot);
+      return snapshot;
+    } catch (error) {
+      if (isMountedRef.current) {
+        setErrorMessage(
+          getReadableError(error, 'No se pudo sincronizar el seguimiento.'),
+        );
+      }
+      return null;
+    }
+  }, [applySnapshot]);
+
+  const initializeTracking = useCallback(async () => {
+    if (Platform.OS !== 'android') {
+      setStatus('paused');
+      setErrorMessage(
+        'La versión actual del seguimiento en segundo plano quedó preparada primero para Android.',
+      );
       return;
     }
 
-    watchIdRef.current = Geolocation.watchPosition(
-      position => {
-        const point: TrackingPoint = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          timestamp: position.timestamp,
-          speed: position.coords.speed,
-        };
+    setStatus('preparing');
 
-        setErrorMessage(null);
-        appendPoint(point);
-      },
-      error => {
-        setErrorMessage(error.message);
-        setCurrentSpeedMps(0);
-      },
-      {
-        enableHighAccuracy: true,
-        distanceFilter: 0,
-        interval: 1000,
-        fastestInterval: 1000,
-        timeout: 15000,
-        maximumAge: 0,
-      },
-    );
-  }, [appendPoint, hasLocationPermission, status]);
-
-  const ensureLocationReady = useCallback(async () => {
-    const granted = await requestLocationPermission();
+    const granted = await ensureTrackingPermissions();
 
     if (!granted) {
       setStatus('paused');
-      setErrorMessage('Permiso de ubicación denegado o GPS no disponible.');
-
-      if (Platform.OS === 'android') {
-        Linking.openSettings().catch(() => {});
-      }
-
+      setErrorMessage(
+        'Permiso de ubicación requerido para iniciar el seguimiento.',
+      );
       return;
     }
 
-    getInitialLocation();
-  }, [getInitialLocation, requestLocationPermission]);
+    try {
+      await startNativeTracking(activityType);
+      await syncSnapshot();
+    } catch (error) {
+      setStatus('paused');
+      setErrorMessage(
+        getReadableError(error, 'No se pudo iniciar el seguimiento nativo.'),
+      );
+    }
+  }, [activityType, ensureTrackingPermissions, syncSnapshot]);
 
   useEffect(() => {
-    Geolocation.setRNConfiguration({
-      skipPermissionRequests: false,
-      authorizationLevel: 'whenInUse',
-      locationProvider: 'playServices',
+    isMountedRef.current = true;
+
+    if (!initialStartAttemptedRef.current) {
+      initialStartAttemptedRef.current = true;
+      initializeTracking();
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [initializeTracking]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || status === 'finished') {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (!permissionFlowRef.current) {
+        syncSnapshot();
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [status, syncSnapshot]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextState => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      const cameToForeground =
+        previousState.match(/inactive|background/) && nextState === 'active';
+
+      if (cameToForeground && !permissionFlowRef.current) {
+        syncSnapshot();
+      }
     });
 
     return () => {
-      clearLocationWatch();
+      subscription.remove();
     };
-  }, [clearLocationWatch]);
-
-  useFocusEffect(
-    useCallback(() => {
-      ensureLocationReady();
-
-      return () => {
-        clearLocationWatch();
-      };
-    }, [clearLocationWatch, ensureLocationReady]),
-  );
-
-  useEffect(() => {
-    if (status !== 'running') {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setElapsedSeconds(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [status]);
-
-  useEffect(() => {
-    if (status === 'running') {
-      startWatchingLocation();
-      return;
-    }
-
-    clearLocationWatch();
-  }, [clearLocationWatch, startWatchingLocation, status]);
+  }, [syncSnapshot]);
 
   const handlePauseResume = useCallback(async () => {
-    if (status === 'running') {
-      setStatus('paused');
-      setCurrentSpeedMps(0);
-      return;
-    }
+    try {
+      if (status === 'running') {
+        await pauseNativeTracking();
+        await syncSnapshot();
+        return;
+      }
 
-    if (status === 'paused') {
-      await ensureLocationReady();
-    }
-  }, [ensureLocationReady, status]);
+      const granted = await ensureTrackingPermissions();
 
-  const handleFinish = useCallback(() => {
-    clearLocationWatch();
+      if (!granted) {
+        setStatus('paused');
+        setErrorMessage(
+          'Permiso de ubicación requerido para continuar.',
+        );
+        return;
+      }
+
+      await resumeNativeTracking();
+      await syncSnapshot();
+    } catch (error) {
+      setErrorMessage(
+        getReadableError(error, 'No se pudo cambiar el estado del seguimiento.'),
+      );
+    }
+  }, [ensureTrackingPermissions, status, syncSnapshot]);
+
+  const handleFinish = useCallback(async () => {
+    let finalSnapshot: NativeTrackingSnapshot | null = null;
+
+    try {
+      finalSnapshot = await syncSnapshot();
+    } catch {}
+
+    const finalElapsedMs = finalSnapshot?.elapsedMs ?? elapsedMs;
+    const finalDistanceMeters = finalSnapshot?.distanceMeters ?? distanceMeters;
+    const finalAverageSpeed =
+      finalElapsedMs > 0
+        ? formatSpeedKmh(finalDistanceMeters / (finalElapsedMs / 1000))
+        : '0.0';
+
+    try {
+      await stopNativeTracking();
+    } catch {}
+
     setStatus('finished');
     setCurrentSpeedMps(0);
 
     setSummaryData({
-      time: formatElapsed(elapsedSeconds),
-      distance: `${formatDistanceKm(totalDistanceRef.current)} km`,
-      speed: `${averageSpeedKmh} km/h`,
+      time: formatElapsedFromMs(finalElapsedMs),
+      distance: `${formatDistanceKm(finalDistanceMeters)} km`,
+      speed: `${finalAverageSpeed} km/h`,
     });
 
     setSummaryVisible(true);
-  }, [averageSpeedKmh, clearLocationWatch, elapsedSeconds]);
+  }, [distanceMeters, elapsedMs, syncSnapshot]);
 
   const closeSummary = useCallback(() => {
     setSummaryVisible(false);
@@ -343,8 +405,8 @@ export function useActivityTracking({
   return {
     activityType,
     status,
-    elapsedSeconds,
-    elapsedLabel: formatElapsed(elapsedSeconds),
+    elapsedSeconds: Math.floor(elapsedMs / 1000),
+    elapsedLabel: formatElapsedFromMs(elapsedMs),
     distanceKm,
     speedKmh,
     averageSpeedKmh,
