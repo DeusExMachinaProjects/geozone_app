@@ -14,6 +14,8 @@ import {AppTabs} from './AppTabs';
 import {colors} from '../theme';
 import {RunTrackingScreen} from '../screens/RunTrackingScreen';
 import {RideTrackingScreen} from '../screens/RideTrackingScreen';
+import {PetTrackingScreen} from '../screens/PetTrackingScreen';
+import {PetScreen} from '../screens/PetScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -55,6 +57,16 @@ export function RootNavigator() {
         <Stack.Screen
           name="RideTracking"
           component={RideTrackingScreen}
+          options={{headerShown: false}}
+        />
+        <Stack.Screen
+          name="PetTracking"
+          component={PetTrackingScreen}
+          options={{headerShown: false}}
+        />
+        <Stack.Screen
+          name="Pet"
+          component={PetScreen}
           options={{headerShown: false}}
         />
       </Stack.Navigator>

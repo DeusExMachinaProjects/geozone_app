@@ -121,10 +121,10 @@ export function HomeScreen() {
           />
 
           <ActionCard
-            icon="🚴"
-            title="A PEDALEAR!"
+            icon="🐾"
+            title="MASCOTAS"
             accent="#FF3E38"
-            onPress={() => navigation.navigate('Ride')}
+            onPress={() => navigation.navigate('Pet')}
           />
 
           <ActionCard

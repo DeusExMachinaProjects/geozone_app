@@ -3,7 +3,7 @@ type SerializablePoint = {
   longitude: number;
 };
 
-export type TrackingMapPayload = {
+export type PetTrackingMapPayload = {
   route: SerializablePoint[];
   currentLocation: SerializablePoint | null;
 };
@@ -15,7 +15,7 @@ function serializeForHtml(value: unknown) {
     .replace(/&/g, '\\u0026');
 }
 
-export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
+export function buildPetTrackingMapHtml(initialPayload: PetTrackingMapPayload) {
   const payloadJson = serializeForHtml(initialPayload);
 
   return `<!DOCTYPE html>
@@ -26,7 +26,7 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
-    <title>GeoZone Run Tracking Map</title>
+    <title>GeoZone Pet Tracking Map</title>
 
     <link
       href="https://unpkg.com/maplibre-gl@5.22.0/dist/maplibre-gl.css"
@@ -60,68 +60,54 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         display: none;
       }
 
-      #run-pill {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        z-index: 20;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(28, 28, 28, 0.72);
-        color: #fff;
-        font-size: 12px;
-        font-weight: 700;
-      }
+            .maplibregl-ctrl-bottom-right {
+              right: 6px !important;
+              bottom: 6px !important;
+              transform: none !important;
+            }
 
-      .maplibregl-ctrl-bottom-right {
-        right: 6px !important;
-        bottom: 6px !important;
-        transform: none !important;
-      }
+            .maplibregl-ctrl-bottom-left {
+              left: 6px !important;
+              bottom: 6px !important;
+              transform: none !important;
+            }
 
-      .maplibregl-ctrl-bottom-left {
-        left: 6px !important;
-        bottom: 6px !important;
-        transform: none !important;
-      }
+            .maplibregl-ctrl-attrib {
+              max-width: 112px !important;
+              min-height: 16px !important;
+              padding: 1px 4px !important;
+              border-radius: 6px !important;
+              background: rgba(18, 18, 18, 0.36) !important;
+              box-shadow: none !important;
+              color: #F3F4F6 !important;
+              font-size: 7px !important;
+              line-height: 9px !important;
+              backdrop-filter: blur(2px);
+              -webkit-backdrop-filter: blur(2px);
+            }
 
-      .maplibregl-ctrl-attrib {
-        max-width: 112px !important;
-        min-height: 16px !important;
-        padding: 1px 4px !important;
-        border-radius: 6px !important;
-        background: rgba(18, 18, 18, 0.36) !important;
-        box-shadow: none !important;
-        color: #F3F4F6 !important;
-        font-size: 7px !important;
-        line-height: 9px !important;
-        backdrop-filter: blur(2px);
-        -webkit-backdrop-filter: blur(2px);
-      }
+            .maplibregl-ctrl-attrib a {
+              color: #F3F4F6 !important;
+              text-decoration: none !important;
+              font-size: inherit !important;
+              line-height: inherit !important;
+            }
 
-      .maplibregl-ctrl-attrib a {
-        color: #F3F4F6 !important;
-        text-decoration: none !important;
-        font-size: inherit !important;
-        line-height: inherit !important;
-      }
-
-      .maplibregl-ctrl-attrib-button {
-        width: 16px !important;
-        height: 16px !important;
-        min-width: 16px !important;
-        min-height: 16px !important;
-        margin: 0 !important;
-        border-radius: 999px !important;
-        background-color: rgba(18, 18, 18, 0.36) !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-      }
+            .maplibregl-ctrl-attrib-button {
+              width: 16px !important;
+              height: 16px !important;
+              min-width: 16px !important;
+              min-height: 16px !important;
+              margin: 0 !important;
+              border-radius: 999px !important;
+              background-color: rgba(18, 18, 18, 0.36) !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+            }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <div id="run-pill">Run view</div>
     <div id="hud"></div>
 
     <script>
@@ -256,6 +242,13 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         return (bearing + 360) % 360;
       }
 
+      function interpolatePoint(a, b, t) {
+        return {
+          latitude: a.latitude + (b.latitude - a.latitude) * t,
+          longitude: a.longitude + (b.longitude - a.longitude) * t,
+        };
+      }
+
       function normalizeRoute(route, minPointDistanceMeters = 4) {
         if (!Array.isArray(route) || route.length === 0) {
           return [];
@@ -371,37 +364,77 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         };
       }
 
-      function buildRouteFeature(route) {
+      function buildPawFeatureCollection(route, stepDistanceMeters = 7) {
+        if (!Array.isArray(route) || route.length < 2) {
+          return {
+            type: 'FeatureCollection',
+            features: [],
+          };
+        }
+
+        const features = [];
+        let distanceSinceLastPaw = 0;
+        let pawIndex = 0;
+
+        for (let i = 1; i < route.length; i += 1) {
+          let segmentStart = route[i - 1];
+          const segmentEnd = route[i];
+
+          let segmentDistance = getDistanceMeters(segmentStart, segmentEnd);
+
+          if (segmentDistance < 2) {
+            continue;
+          }
+
+          const rotation = getBearingDegrees(segmentStart, segmentEnd);
+
+          while (distanceSinceLastPaw + segmentDistance >= stepDistanceMeters) {
+            const neededDistance = stepDistanceMeters - distanceSinceLastPaw;
+            const t =
+              segmentDistance === 0 ? 0 : neededDistance / segmentDistance;
+
+            const basePoint = interpolatePoint(segmentStart, segmentEnd, t);
+
+            features.push({
+              type: 'Feature',
+              properties: {
+                id: 'paw-' + pawIndex,
+                rotation,
+              },
+              geometry: {
+                type: 'Point',
+                coordinates: [basePoint.longitude, basePoint.latitude],
+              },
+            });
+
+            pawIndex += 1;
+            segmentStart = basePoint;
+            segmentDistance = getDistanceMeters(segmentStart, segmentEnd);
+            distanceSinceLastPaw = 0;
+          }
+
+          distanceSinceLastPaw += segmentDistance;
+        }
+
         return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: route.map((point) => [
-              point.longitude,
-              point.latitude,
-            ]),
-          },
-          properties: {},
+          type: 'FeatureCollection',
+          features,
         };
       }
 
       function ensureTrackingSources() {
-        if (!map.getSource('run-route-source')) {
-          map.addSource('run-route-source', {
+        if (!map.getSource('pet-paws-source')) {
+          map.addSource('pet-paws-source', {
             type: 'geojson',
             data: {
-              type: 'Feature',
-              geometry: {
-                type: 'LineString',
-                coordinates: [],
-              },
-              properties: {},
+              type: 'FeatureCollection',
+              features: [],
             },
           });
         }
 
-        if (!map.getSource('run-position-source')) {
-          map.addSource('run-position-source', {
+        if (!map.getSource('pet-position-source')) {
+          map.addSource('pet-position-source', {
             type: 'geojson',
             data: {
               type: 'Feature',
@@ -414,45 +447,34 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
           });
         }
 
-        if (!map.getLayer('run-route-line-outline')) {
+        if (!map.getLayer('pet-paw-symbols')) {
           map.addLayer({
-            id: 'run-route-line-outline',
-            type: 'line',
-            source: 'run-route-source',
+            id: 'pet-paw-symbols',
+            type: 'symbol',
+            source: 'pet-paws-source',
             layout: {
-              'line-cap': 'round',
-              'line-join': 'round',
+              'text-field': '🐾',
+              'text-size': 16,
+              'text-rotation-alignment': 'map',
+              'text-rotate': ['get', 'rotation'],
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+              'text-keep-upright': false,
             },
             paint: {
-              'line-color': 'rgba(255,255,255,0.35)',
-              'line-width': 7,
-              'line-opacity': 0.55,
+              'text-color': '#ff6b52',
+              'text-halo-color': '#ffffff',
+              'text-halo-width': 1.1,
+              'text-opacity': 0.96,
             },
           });
         }
 
-        if (!map.getLayer('run-route-line')) {
+        if (!map.getLayer('pet-position-halo')) {
           map.addLayer({
-            id: 'run-route-line',
-            type: 'line',
-            source: 'run-route-source',
-            layout: {
-              'line-cap': 'round',
-              'line-join': 'round',
-            },
-            paint: {
-              'line-color': '#ff6b52',
-              'line-width': 4.5,
-              'line-opacity': 0.96,
-            },
-          });
-        }
-
-        if (!map.getLayer('run-position-halo')) {
-          map.addLayer({
-            id: 'run-position-halo',
+            id: 'pet-position-halo',
             type: 'circle',
-            source: 'run-position-source',
+            source: 'pet-position-source',
             paint: {
               'circle-radius': 18,
               'circle-color': '#ff6b52',
@@ -461,11 +483,11 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
           });
         }
 
-        if (!map.getLayer('run-position-core')) {
+        if (!map.getLayer('pet-position-core')) {
           map.addLayer({
-            id: 'run-position-core',
+            id: 'pet-position-core',
             type: 'circle',
-            source: 'run-position-source',
+            source: 'pet-position-source',
             paint: {
               'circle-radius': 8,
               'circle-color': '#ff6b52',
@@ -476,28 +498,16 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         }
       }
 
-      function updateRoute(route) {
-        const source = map.getSource('run-route-source');
+      function updatePawTrail(route) {
+        const source = map.getSource('pet-paws-source');
         if (!source) return;
 
         const displayRoute = buildDisplayRoute(route);
-
-        source.setData(
-          displayRoute.length >= 2
-            ? buildRouteFeature(displayRoute)
-            : {
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: [],
-                },
-                properties: {},
-              }
-        );
+        source.setData(buildPawFeatureCollection(displayRoute, 7));
       }
 
       function updatePosition(currentLocation) {
-        const source = map.getSource('run-position-source');
+        const source = map.getSource('pet-position-source');
         if (!source || !currentLocation) return;
 
         source.setData({
@@ -598,7 +608,7 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
 
         hideHud();
         updatePosition(currentLocation);
-        updateRoute(route);
+        updatePawTrail(route);
         updateCamera(currentLocation, route);
       }
 
@@ -606,25 +616,25 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         const payload = sanitizePayload(INITIAL_PAYLOAD);
         const currentLocation = payload.currentLocation;
 
-        map = new maplibregl.Map({
-          container: 'map',
-          style: STYLE_URL,
-          center: currentLocation
-            ? [currentLocation.longitude, currentLocation.latitude]
-            : [-70.64827, -33.45694],
-          zoom: currentLocation ? 17.5 : 13,
-          pitch: 58,
-          bearing: -28,
-          attributionControl: false,
-          antialias: true,
-        });
+         map = new maplibregl.Map({
+                  container: 'map',
+                  style: STYLE_URL,
+                  center: currentLocation
+                    ? [currentLocation.longitude, currentLocation.latitude]
+                    : [-70.64827, -33.45694],
+                  zoom: currentLocation ? 17.5 : 13,
+                  pitch: 58,
+                  bearing: -28,
+                  attributionControl: false,
+                  antialias: true,
+                });
 
-        map.addControl(
-          new maplibregl.AttributionControl({
-            compact: true,
-          }),
-          'bottom-right'
-        );
+                map.addControl(
+                  new maplibregl.AttributionControl({
+                    compact: true,
+                  }),
+                  'bottom-right'
+                );
 
         installStyleImageFallback();
 
@@ -635,7 +645,7 @@ export function buildTrackingMapHtml(initialPayload: TrackingMapPayload) {
         });
       }
 
-      window.__updateTracking = function updateTracking(payload) {
+      window.__updatePetTracking = function updatePetTracking(payload) {
         if (!map || !map.isStyleLoaded()) return;
         renderPayload(payload);
       };

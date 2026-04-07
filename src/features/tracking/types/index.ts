@@ -1,4 +1,4 @@
-export type ActivityType = 'run' | 'ride';
+export type ActivityType = 'run' | 'ride' | 'pet';
 
 export type RunStatus = 'preparing' | 'running' | 'paused' | 'finished';
 

@@ -13,13 +13,11 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {styles} from '../../../theme/screens/ActivityTrackingScreen.styles';
-import type {ActivityType} from '../types';
-import type {UseActivityTrackingResult} from '../hooks/useActivityTracking';
-import {TrackingMap} from './TrackingMap';
+import type {UsePetTrackingResult} from '../hooks/usePetTracking';
+import {PetTrackingMap} from './PetTrackingMap';
 
 type Props = {
-  activityType: ActivityType;
-  tracking: UseActivityTrackingResult;
+  tracking: UsePetTrackingResult;
   onBack: () => void;
 };
 
@@ -41,13 +39,13 @@ type ImportantNotification = {
   tone: 'warning' | 'danger';
 };
 
-function getStatusLabel(status: UseActivityTrackingResult['status']) {
+function getStatusLabel(status: UsePetTrackingResult['status']) {
   if (status === 'preparing') {
     return 'Buscando GPS';
   }
 
   if (status === 'running') {
-    return 'En actividad';
+    return 'En seguimiento';
   }
 
   if (status === 'paused') {
@@ -57,29 +55,7 @@ function getStatusLabel(status: UseActivityTrackingResult['status']) {
   return 'Finalizada';
 }
 
-function getActivityCopy(activityType: ActivityType) {
-  if (activityType === 'ride') {
-    return {
-      title: 'Pedaleo',
-      titleFull: 'Pedaleo en seguimiento',
-      statusRunning: 'Pedaleo en curso',
-      routeLabel: 'recorrido',
-    };
-  }
-
-  return {
-    title: 'Carrera',
-    titleFull: 'Carrera en seguimiento',
-    statusRunning: 'Carrera en curso',
-    routeLabel: 'ruta',
-  };
-}
-
-export function ActivityTrackingView({
-  activityType,
-  tracking,
-  onBack,
-}: Props) {
+export function PetTrackingView({tracking, onBack}: Props) {
   const insets = useSafeAreaInsets();
   const {width} = useWindowDimensions();
 
@@ -91,7 +67,6 @@ export function ActivityTrackingView({
 
   const hasLocation = Boolean(tracking.currentLocation);
   const statusLabel = getStatusLabel(tracking.status);
-  const copy = getActivityCopy(activityType);
 
   const primaryActionLabel =
     tracking.status === 'preparing'
@@ -124,7 +99,7 @@ export function ActivityTrackingView({
         id: 'gps-waiting',
         title: 'Esperando señal GPS',
         message:
-          'Aún no llega una ubicación válida para comenzar a registrar la actividad.',
+          'Aún no llega una ubicación válida para comenzar a seguir a la mascota.',
         badge: 'GPS',
         icon: 'location-outline',
         tone: 'warning',
@@ -149,7 +124,7 @@ export function ActivityTrackingView({
       },
       {
         id: 'time',
-        title: 'Tiempo de actividad',
+        title: 'Tiempo de seguimiento',
         message: `Tiempo activo: ${tracking.elapsedLabel}.`,
         time: 'En vivo',
         icon: 'time-outline',
@@ -160,9 +135,9 @@ export function ActivityTrackingView({
           tracking.status === 'paused'
             ? 'Sesión pausada'
             : tracking.status === 'running'
-              ? copy.statusRunning
+              ? 'Sesión en curso'
               : tracking.status === 'preparing'
-                ? 'Inicializando actividad'
+                ? 'Inicializando seguimiento'
                 : 'Sesión finalizada',
         message:
           tracking.status === 'paused'
@@ -170,8 +145,8 @@ export function ActivityTrackingView({
             : tracking.status === 'running'
               ? `Velocidad actual: ${tracking.speedKmh} km/h.`
               : tracking.status === 'preparing'
-                ? 'El sistema está preparando el seguimiento de la actividad.'
-                : 'La actividad terminó y está lista para el resumen.',
+                ? 'El sistema está preparando el seguimiento de la mascota.'
+                : 'El recorrido terminó y está listo para resumen.',
         time: 'Sistema',
         icon:
           tracking.status === 'paused'
@@ -187,15 +162,13 @@ export function ActivityTrackingView({
         id: 'route',
         title: 'Ruta registrada',
         message: hasLocation
-          ? `Se han marcado ${tracking.route.length} puntos en el ${copy.routeLabel}.`
+          ? `Se han marcado ${tracking.route.length} puntos en el recorrido.`
           : 'Todavía no hay puntos registrados en el mapa.',
         time: 'Mapa',
-        icon: 'map-outline',
+        icon: 'paw-outline',
       },
     ];
   }, [
-    copy.routeLabel,
-    copy.statusRunning,
     hasLocation,
     tracking.distanceKm,
     tracking.elapsedLabel,
@@ -272,7 +245,7 @@ export function ActivityTrackingView({
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
 
       <View style={styles.mapStage}>
-        <TrackingMap
+        <PetTrackingMap
           route={tracking.route}
           currentLocation={tracking.currentLocation}
         />

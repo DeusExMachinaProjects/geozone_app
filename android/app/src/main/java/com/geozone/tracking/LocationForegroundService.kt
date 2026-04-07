@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.location.LocationManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -26,6 +27,8 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import java.util.Locale
+import kotlin.math.max
 
 class LocationForegroundService : Service() {
 
@@ -39,11 +42,33 @@ class LocationForegroundService : Service() {
         const val ACTION_STOP = "com.geozone.tracking.STOP"
 
         const val EXTRA_ACTIVITY_TYPE = "activity_type"
+
+        private const val REQUEST_CODE_OPEN_APP = 2000
+        private const val REQUEST_CODE_PAUSE_RESUME = 2001
+        private const val REQUEST_CODE_STOP = 2002
     }
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+
+    private val notificationRefreshHandler by lazy {
+        Handler(Looper.getMainLooper())
+    }
+
+    private val notificationRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!TrackingSessionStore.isActive(this@LocationForegroundService)) {
+                return
+            }
+
+            updateNotification()
+
+            if (!TrackingSessionStore.isPaused(this@LocationForegroundService)) {
+                notificationRefreshHandler.postDelayed(this, 1000L)
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -64,24 +89,30 @@ class LocationForegroundService : Service() {
                     return START_NOT_STICKY
                 }
 
+                updateNotification()
+                startNotificationRefreshTicker()
                 requestLocationUpdatesIfPossible()
             }
 
             ACTION_PAUSE -> {
                 TrackingSessionStore.pause(this)
                 removeLocationUpdates()
+                stopNotificationRefreshTicker()
                 updateNotification()
             }
 
             ACTION_RESUME -> {
                 TrackingSessionStore.resume(this)
                 updateNotification()
+                startNotificationRefreshTicker()
                 requestLocationUpdatesIfPossible()
             }
 
             ACTION_STOP -> {
+                stopNotificationRefreshTicker()
                 removeLocationUpdates()
                 TrackingSessionStore.stop(this)
+                notificationManager.cancel(NOTIFICATION_ID)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -92,6 +123,8 @@ class LocationForegroundService : Service() {
                     return START_NOT_STICKY
                 }
 
+                updateNotification()
+                startNotificationRefreshTicker()
                 requestLocationUpdatesIfPossible()
             }
         }
@@ -100,6 +133,7 @@ class LocationForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        stopNotificationRefreshTicker()
         removeLocationUpdates()
         super.onDestroy()
     }
@@ -219,6 +253,20 @@ class LocationForegroundService : Service() {
         }
     }
 
+    private fun startNotificationRefreshTicker() {
+        stopNotificationRefreshTicker()
+
+        if (!TrackingSessionStore.isActive(this) || TrackingSessionStore.isPaused(this)) {
+            return
+        }
+
+        notificationRefreshHandler.post(notificationRefreshRunnable)
+    }
+
+    private fun stopNotificationRefreshTicker() {
+        notificationRefreshHandler.removeCallbacks(notificationRefreshRunnable)
+    }
+
     private fun updateNotification() {
         notificationManager.notify(NOTIFICATION_ID, buildNotification())
     }
@@ -227,6 +275,10 @@ class LocationForegroundService : Service() {
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(buildNotificationTitle())
             .setContentText(buildNotificationText())
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(buildExpandedNotificationText()),
+            )
             .setSmallIcon(R.mipmap.ic_launcher)
             .setColor(Color.parseColor("#FF6B52"))
             .setOngoing(true)
@@ -234,6 +286,8 @@ class LocationForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(buildContentIntent())
+            .addAction(buildPauseResumeAction())
+            .addAction(buildStopAction())
             .setShowWhen(!TrackingSessionStore.isPaused(this))
             .setUsesChronometer(!TrackingSessionStore.isPaused(this))
             .setWhen(System.currentTimeMillis() - TrackingSessionStore.getElapsedMs(this))
@@ -244,26 +298,141 @@ class LocationForegroundService : Service() {
         val isPaused = TrackingSessionStore.isPaused(this)
 
         return when {
+            isPaused && activityType == "pet" -> "GeoZone · Mascota pausada"
             isPaused && activityType == "ride" -> "GeoZone · Pedaleo pausado"
             isPaused -> "GeoZone · Carrera pausada"
+            activityType == "pet" -> "GeoZone · Mascota en seguimiento"
             activityType == "ride" -> "GeoZone · Pedaleo en curso"
             else -> "GeoZone · Carrera en curso"
         }
     }
 
     private fun buildNotificationText(): String {
-        val snapshot = TrackingSessionStore.toWritableMap(this)
-        val errorCode = snapshot.getString("errorCode")
+        val errorMessage = buildErrorMessage()
+        val metricsText = buildMetricsInlineText()
 
-        return when (errorCode) {
+        return if (errorMessage != null) {
+            "$errorMessage · $metricsText"
+        } else {
+            metricsText
+        }
+    }
+
+    private fun buildExpandedNotificationText(): String {
+        val activityType = TrackingSessionStore.getActivityType(this)
+        val isPaused = TrackingSessionStore.isPaused(this)
+
+        val stateLabel = when {
+            isPaused -> "Estado: pausado"
+            activityType == "pet" -> "Estado: seguimiento activo"
+            activityType == "ride" -> "Estado: pedaleo activo"
+            else -> "Estado: carrera activa"
+        }
+
+        val elapsedText = formatElapsed(TrackingSessionStore.getElapsedMs(this))
+        val distanceText = formatDistanceKm(TrackingSessionStore.getDistanceMeters(this) / 1000f)
+        val speedText = formatSpeedKmh(getCurrentSpeedKmh())
+        val errorMessage = buildErrorMessage()
+
+        return buildString {
+            appendLine(stateLabel)
+            appendLine("Tiempo: $elapsedText")
+            appendLine("Distancia: $distanceText km")
+            append("Velocidad: $speedText km/h")
+
+            if (!errorMessage.isNullOrBlank()) {
+                appendLine()
+                append(errorMessage)
+            }
+        }.trim()
+    }
+
+    private fun buildMetricsInlineText(): String {
+        val elapsedText = formatElapsed(TrackingSessionStore.getElapsedMs(this))
+        val distanceText = formatDistanceKm(TrackingSessionStore.getDistanceMeters(this) / 1000f)
+        val speedText = formatSpeedKmh(getCurrentSpeedKmh())
+
+        return "Tiempo $elapsedText · Distancia $distanceText km · Velocidad $speedText km/h"
+    }
+
+    private fun getCurrentSpeedKmh(): Double {
+        val snapshot = TrackingSessionStore.toWritableMap(this)
+        val speedMps = snapshot.getDouble("speedMps")
+        return max(0.0, speedMps * 3.6)
+    }
+
+    private fun buildErrorMessage(): String? {
+        val snapshot = TrackingSessionStore.toWritableMap(this)
+        return when (snapshot.getString("errorCode")) {
             "gps_disabled" -> "Sin GPS. Activa la ubicación para continuar."
             "permission_denied" -> "Permiso de ubicación requerido."
             "location_unavailable" -> "Buscando ubicación..."
-            else -> {
-                val distanceKm = TrackingSessionStore.getDistanceMeters(this) / 1000f
-                "Distancia ${"%.2f".format(distanceKm)} km"
-            }
+            else -> null
         }
+    }
+
+    private fun formatElapsed(elapsedMs: Long): String {
+        val totalSeconds = max(0L, elapsedMs / 1000L)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+
+        return String.format(
+            Locale.getDefault(),
+            "%02d:%02d:%02d",
+            hours,
+            minutes,
+            seconds,
+        )
+    }
+
+    private fun formatDistanceKm(distanceKm: Float): String =
+        String.format(Locale.getDefault(), "%.2f", max(0f, distanceKm))
+
+    private fun formatSpeedKmh(speedKmh: Double): String =
+        String.format(Locale.getDefault(), "%.1f", max(0.0, speedKmh))
+
+    private fun buildPauseResumeAction(): NotificationCompat.Action {
+        val isPaused = TrackingSessionStore.isPaused(this)
+        val action = if (isPaused) ACTION_RESUME else ACTION_PAUSE
+        val title = if (isPaused) "Reanudar" else "Pausar"
+        val iconRes = if (isPaused) {
+            android.R.drawable.ic_media_play
+        } else {
+            android.R.drawable.ic_media_pause
+        }
+
+        return NotificationCompat.Action(
+            iconRes,
+            title,
+            buildServicePendingIntent(action, REQUEST_CODE_PAUSE_RESUME),
+        )
+    }
+
+    private fun buildStopAction(): NotificationCompat.Action {
+        return NotificationCompat.Action(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "Finalizar",
+            buildServicePendingIntent(ACTION_STOP, REQUEST_CODE_STOP),
+        )
+    }
+
+    private fun buildServicePendingIntent(
+        action: String,
+        requestCode: Int,
+    ): PendingIntent {
+        val serviceIntent = Intent(this, LocationForegroundService::class.java).apply {
+            this.action = action
+        }
+
+        val pendingFlags =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+        return PendingIntent.getService(this, requestCode, serviceIntent, pendingFlags)
     }
 
     private fun buildContentIntent(): PendingIntent {
@@ -278,7 +447,12 @@ class LocationForegroundService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT
             }
 
-        return PendingIntent.getActivity(this, 0, openAppIntent, pendingFlags)
+        return PendingIntent.getActivity(
+            this,
+            REQUEST_CODE_OPEN_APP,
+            openAppIntent,
+            pendingFlags,
+        )
     }
 
     private fun createNotificationChannel() {
