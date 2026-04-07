@@ -14,6 +14,7 @@ object TrackingSessionStore {
 
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_IS_PAUSED = "is_paused"
+    private const val KEY_IS_FINISHED = "is_finished"
     private const val KEY_ACTIVITY_TYPE = "activity_type"
     private const val KEY_START_TIME_MS = "start_time_ms"
     private const val KEY_ACCUMULATED_PAUSE_MS = "accumulated_pause_ms"
@@ -30,9 +31,11 @@ object TrackingSessionStore {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun isActive(context: Context): Boolean = prefs(context).getBoolean(KEY_IS_ACTIVE, false)
+    fun isActive(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_IS_ACTIVE, false)
 
-    fun isPaused(context: Context): Boolean = prefs(context).getBoolean(KEY_IS_PAUSED, false)
+    fun isPaused(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_IS_PAUSED, false)
 
     fun getActivityType(context: Context): String =
         prefs(context).getString(KEY_ACTIVITY_TYPE, "run") ?: "run"
@@ -51,6 +54,7 @@ object TrackingSessionStore {
         prefs(context).edit()
             .putBoolean(KEY_IS_ACTIVE, true)
             .putBoolean(KEY_IS_PAUSED, false)
+            .putBoolean(KEY_IS_FINISHED, false)
             .putString(KEY_ACTIVITY_TYPE, activityType)
             .putLong(KEY_START_TIME_MS, now)
             .putLong(KEY_ACCUMULATED_PAUSE_MS, 0L)
@@ -106,6 +110,7 @@ object TrackingSessionStore {
         prefs(context).edit()
             .putBoolean(KEY_IS_ACTIVE, false)
             .putBoolean(KEY_IS_PAUSED, false)
+            .putBoolean(KEY_IS_FINISHED, true)
             .putLong(KEY_PAUSE_STARTED_AT_MS, 0L)
             .putFloat(KEY_SPEED_MPS, 0f)
             .apply()
@@ -250,6 +255,7 @@ object TrackingSessionStore {
 
         map.putBoolean("isActive", prefs.getBoolean(KEY_IS_ACTIVE, false))
         map.putBoolean("isPaused", prefs.getBoolean(KEY_IS_PAUSED, false))
+        map.putBoolean("isFinished", prefs.getBoolean(KEY_IS_FINISHED, false))
         map.putString("activityType", prefs.getString(KEY_ACTIVITY_TYPE, "run"))
         map.putDouble("elapsedMs", getElapsedMs(context).toDouble())
         map.putDouble("distanceMeters", prefs.getFloat(KEY_DISTANCE_METERS, 0f).toDouble())
@@ -268,7 +274,11 @@ object TrackingSessionStore {
             map.putNull("location")
         }
 
-        map.putArray("route", routeToWritableArray(prefs.getString(KEY_ROUTE_JSON, "[]") ?: "[]"))
+        map.putArray(
+            "route",
+            routeToWritableArray(prefs.getString(KEY_ROUTE_JSON, "[]") ?: "[]"),
+        )
+
         return map
     }
 

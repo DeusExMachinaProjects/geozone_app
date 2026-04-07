@@ -11,6 +11,8 @@ export type RootStackParamList = {
   Missions: undefined;
   RunTracking: undefined;
   RideTracking: undefined;
+  PetTracking: undefined;
+  Pet: undefined;
 };
 
 export type MainTabParamList = {

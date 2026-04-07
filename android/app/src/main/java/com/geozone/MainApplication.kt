@@ -11,6 +11,8 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
+import com.geozone.notifications.AppNotificationChannels
+import com.geozone.notifications.BusinessNotificationPackage
 import com.geozone.tracking.TrackingForegroundPackage
 
 class MainApplication : Application(), ReactApplication {
@@ -20,6 +22,7 @@ class MainApplication : Application(), ReactApplication {
       override fun getPackages(): List<ReactPackage> =
         PackageList(this).packages.apply {
           add(TrackingForegroundPackage())
+          add(BusinessNotificationPackage())
         }
 
       override fun getJSMainModuleName(): String = "index"
@@ -36,6 +39,9 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     SoLoader.init(this, OpenSourceMergedSoMapping)
+
+    AppNotificationChannels.ensureChannels(this)
+
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       load()
     }

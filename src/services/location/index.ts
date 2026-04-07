@@ -4,6 +4,7 @@ import type {ActivityType, TrackingPoint} from '../../features/tracking/types';
 export type NativeTrackingSnapshot = {
   isActive: boolean;
   isPaused: boolean;
+  isFinished: boolean;
   activityType: ActivityType;
   elapsedMs: number;
   distanceMeters: number;

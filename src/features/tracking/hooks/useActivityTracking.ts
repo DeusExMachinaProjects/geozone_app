@@ -83,6 +83,7 @@ export function useActivityTracking({
   const initialStartAttemptedRef = useRef(false);
   const permissionFlowRef = useRef<Promise<boolean> | null>(null);
   const notificationAskedRef = useRef(false);
+  const finishedSnapshotHandledRef = useRef(false);
 
   const distanceKm = useMemo(
     () => formatDistanceKm(distanceMeters),
@@ -205,10 +206,32 @@ export function useActivityTracking({
 
     setRoute(snapshot.route ?? []);
     setErrorMessage(deriveErrorMessage(snapshot.errorCode));
+    if (snapshot.isFinished && !finishedSnapshotHandledRef.current) {
+      finishedSnapshotHandledRef.current = true;
+
+      const finishedElapsedMs = snapshot.elapsedMs;
+      const finishedDistanceMeters = snapshot.distanceMeters;
+      const finishedAverageSpeed =
+        finishedElapsedMs > 0
+          ? formatSpeedKmh(finishedDistanceMeters / (finishedElapsedMs / 1000))
+          : '0.0';
+
+      setCurrentSpeedMps(0);
+      setSummaryData({
+        time: formatElapsedFromMs(finishedElapsedMs),
+        distance: `${formatDistanceKm(finishedDistanceMeters)} km`,
+        speed: `${finishedAverageSpeed} km/h`,
+      });
+      setSummaryVisible(true);
+    }
 
     setStatus(prev => {
       if (prev === 'finished') {
         return prev;
+      }
+
+      if (snapshot.isFinished) {
+        return 'finished';
       }
 
       if (!snapshot.isActive) {
@@ -286,6 +309,9 @@ export function useActivityTracking({
     }
 
     try {
+      finishedSnapshotHandledRef.current = false;
+      setSummaryVisible(false);
+      setSummaryData(null);
       await startNativeTracking(activityType);
       await syncSnapshot();
     } catch (error) {
@@ -388,6 +414,7 @@ export function useActivityTracking({
 
     setStatus('finished');
     setCurrentSpeedMps(0);
+    finishedSnapshotHandledRef.current = true;
 
     setSummaryData({
       time: formatElapsedFromMs(finalElapsedMs),

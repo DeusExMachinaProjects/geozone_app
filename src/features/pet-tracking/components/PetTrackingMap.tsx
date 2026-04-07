@@ -1,12 +1,12 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {Text, View} from 'react-native';
 import {WebView} from 'react-native-webview';
-import type {TrackingPoint} from '../types';
-import {styles} from './TrackingMap.styles';
+import type {TrackingPoint} from '../../tracking/types';
+import {styles} from './PetTrackingMap.styles';
 import {
-  buildTrackingMapHtml,
-  type TrackingMapPayload,
-} from './TrackingMapHtml';
+  buildPetTrackingMapHtml,
+  type PetTrackingMapPayload,
+} from './PetTrackingMapHtml';
 
 type Props = {
   route: TrackingPoint[];
@@ -35,11 +35,11 @@ function toSerializablePoint(point: TrackingPoint): SerializablePoint {
   };
 }
 
-export function TrackingMap({route, currentLocation}: Props) {
+export function PetTrackingMap({route, currentLocation}: Props) {
   const webViewRef = useRef<WebView | null>(null);
   const didLoadRef = useRef(false);
 
-  const payload = useMemo<TrackingMapPayload>(() => {
+  const payload = useMemo<PetTrackingMapPayload>(() => {
     return {
       route: route.filter(isValidPoint).map(toSerializablePoint),
       currentLocation: isValidPoint(currentLocation)
@@ -49,7 +49,7 @@ export function TrackingMap({route, currentLocation}: Props) {
   }, [route, currentLocation]);
 
   const initialHtml = useMemo(() => {
-    return buildTrackingMapHtml({
+    return buildPetTrackingMapHtml({
       route: [],
       currentLocation: null,
     });
@@ -61,7 +61,7 @@ export function TrackingMap({route, currentLocation}: Props) {
     }
 
     const script = `
-      window.__updateTracking && window.__updateTracking(${JSON.stringify(payload)});
+      window.__updatePetTracking && window.__updatePetTracking(${JSON.stringify(payload)});
       true;
     `;
 
@@ -99,7 +99,7 @@ export function TrackingMap({route, currentLocation}: Props) {
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Esperando GPS...</Text>
           <Text style={styles.emptyText}>
-            Cuando llegue la ubicación, el mapa inclinado seguirá tu posición y dibujará la ruta.
+            Cuando llegue la ubicación, el mapa inclinado seguirá la posición de la mascota.
           </Text>
         </View>
       ) : null}
