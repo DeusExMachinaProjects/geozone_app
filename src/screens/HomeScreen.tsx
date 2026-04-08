@@ -58,7 +58,7 @@ export function HomeScreen() {
             </View>
 
             <View style={styles.profileInfo}>
-              <Text style={styles.welcome}>Bienvenido, Jean</Text>
+              <Text style={styles.welcome}>Bienvenido, Gato</Text>
               <Text style={styles.location}>@SpeedJean - Santiago</Text>
 
               <View style={styles.badgesRow}>
