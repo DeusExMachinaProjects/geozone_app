@@ -11,39 +11,31 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
-import com.geozone.notifications.AppNotificationChannels
-import com.geozone.notifications.BusinessNotificationPackage
-import com.geozone.tracking.TrackingForegroundPackage
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-    object : DefaultReactNativeHost(this) {
-      override fun getPackages(): List<ReactPackage> =
-        PackageList(this).packages.apply {
-          add(TrackingForegroundPackage())
-          add(BusinessNotificationPackage())
+    override val reactNativeHost: ReactNativeHost =
+        object : DefaultReactNativeHost(this) {
+            override fun getPackages(): List<ReactPackage> =
+                PackageList(this).packages
+
+            override fun getJSMainModuleName(): String = "index"
+
+            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
         }
 
-      override fun getJSMainModuleName(): String = "index"
+    override val reactHost: ReactHost
+        get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-      override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+    override fun onCreate() {
+        super.onCreate()
+        SoLoader.init(this, OpenSourceMergedSoMapping)
 
-      override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-      override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+            load()
+        }
     }
-
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
-
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-
-    AppNotificationChannels.ensureChannels(this)
-
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      load()
-    }
-  }
 }

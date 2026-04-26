@@ -1,60 +1,37 @@
-import type {TrackingPoint} from '../types';
+export function formatElapsedTime(elapsedMs: number) {
+  const safeElapsedMs =
+    Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs : 0;
 
-export function formatElapsedFromMs(elapsedMs: number) {
-  const safeMs = Math.max(0, elapsedMs);
-  const totalSeconds = Math.floor(safeMs / 1000);
+  const totalSeconds = Math.floor(safeElapsedMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  const hrs = Math.floor(totalSeconds / 3600)
-    .toString()
-    .padStart(2, '0');
-  const mins = Math.floor((totalSeconds % 3600) / 60)
-    .toString()
-    .padStart(2, '0');
-  const secs = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, '0');
-
-  return `${hrs}:${mins}:${secs}`;
+  return [hours, minutes, seconds]
+    .map(value => String(value).padStart(2, '0'))
+    .join(':');
 }
 
-export function formatDistanceKm(meters: number) {
-  return (Math.max(0, meters) / 1000).toFixed(2);
+// Alias para compatibilidad, por si en otra parte del proyecto aún usas el nombre viejo.
+export const formatElapsedFromMs = formatElapsedTime;
+
+export function formatDistanceKm(distanceMeters: number) {
+  const safeDistance =
+    Number.isFinite(distanceMeters) && distanceMeters > 0
+      ? distanceMeters
+      : 0;
+
+  return `${(safeDistance / 1000).toFixed(2)} km`;
 }
 
 export function formatSpeedKmh(speedMps: number) {
-  return (Math.max(0, speedMps) * 3.6).toFixed(1);
+  const safeSpeed = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 0;
+  return `${(safeSpeed * 3.6).toFixed(1)} km/h`;
 }
 
-export function deriveErrorMessage(errorCode?: string | null) {
-  switch (errorCode) {
-    case 'gps_disabled':
-      return 'Sin GPS. Activa la ubicación para continuar.';
-    case 'permission_denied':
-      return 'Permiso de ubicación requerido. Acepta el acceso al GPS para iniciar o reanudar la actividad.';
-    case 'location_unavailable':
-      return 'Buscando ubicación...';
-    case 'service_unavailable':
-      return 'El servicio de seguimiento no está disponible.';
-    default:
-      return null;
-  }
-}
+export function formatAscentMeters(ascentMeters: number) {
+  const safeAscent =
+    Number.isFinite(ascentMeters) && ascentMeters > 0 ? ascentMeters : 0;
 
-export function isSamePoint(
-  first: TrackingPoint | null,
-  second: TrackingPoint | null,
-) {
-  if (!first && !second) {
-    return true;
-  }
-
-  if (!first || !second) {
-    return false;
-  }
-
-  return (
-    first.latitude === second.latitude &&
-    first.longitude === second.longitude &&
-    first.timestamp === second.timestamp
-  );
+  return `${Math.round(safeAscent)} m`;
 }

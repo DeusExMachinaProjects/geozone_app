@@ -216,6 +216,8 @@ export const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     fontSize: 10,
     fontWeight: '700',
+    flex: 1,
+    paddingRight: 10,
   },
 
   progressMax: {
@@ -228,16 +230,16 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginTop: 2,
+    marginTop: 4,
   },
 
   actionCard: {
     width: '48.2%',
     backgroundColor: '#121212',
     borderRadius: 22,
-    height: isVeryShortScreen ? 98 : isShortScreen ? 108 : 118,
-    paddingVertical: isVeryShortScreen ? 10 : 12,
-    paddingHorizontal: spacing.md,
+    minHeight: isVeryShortScreen ? 100 : isShortScreen ? 112 : 124,
+    paddingVertical: isVeryShortScreen ? 10 : 14,
+    paddingHorizontal: spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: isVeryShortScreen ? 10 : 12,
@@ -246,15 +248,16 @@ export const styles = StyleSheet.create({
   },
 
   actionIcon: {
-    fontSize: isVeryShortScreen ? 26 : isShortScreen ? 28 : 30,
+    fontSize: isVeryShortScreen ? 24 : isShortScreen ? 26 : 28,
     marginBottom: isVeryShortScreen ? 6 : 8,
   },
 
   actionTitle: {
     color: '#F4F4F4',
-    fontSize: isVeryShortScreen ? 15 : isShortScreen ? 16 : 18,
+    fontSize: isVeryShortScreen ? 13 : isShortScreen ? 14 : 15,
     fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+    lineHeight: isVeryShortScreen ? 16 : isShortScreen ? 18 : 19,
   },
 });

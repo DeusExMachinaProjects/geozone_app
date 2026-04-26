@@ -13,13 +13,12 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {styles} from '../../../theme/screens/ActivityTrackingScreen.styles';
-import type {ActivityType} from '../types';
-import type {UseActivityTrackingResult} from '../hooks/useActivityTracking';
 import {TrackingMap} from './TrackingMap';
+import type {UseActivityTrackingResult} from '../hooks/useActivityTracking';
 
 type Props = {
-  activityType: ActivityType;
   tracking: UseActivityTrackingResult;
+  activityType: 'run' | 'ride' | 'pet';
   onBack: () => void;
 };
 
@@ -41,43 +40,69 @@ type ImportantNotification = {
   tone: 'warning' | 'danger';
 };
 
-function getStatusLabel(status: UseActivityTrackingResult['status']) {
-  if (status === 'preparing') {
-    return 'Buscando GPS';
+function getActivityLabel(activityType: 'run' | 'ride' | 'pet') {
+  if (activityType === 'ride') {
+    return 'pedaleo';
   }
 
-  if (status === 'running') {
-    return 'En actividad';
+  if (activityType === 'pet') {
+    return 'paseo';
+  }
+
+  return 'carrera';
+}
+
+function getActivityTitle(activityType: 'run' | 'ride' | 'pet') {
+  if (activityType === 'ride') {
+    return 'Pedaleo';
+  }
+
+  if (activityType === 'pet') {
+    return 'Paseo';
+  }
+
+  return 'Carrera';
+}
+
+function getRouteIcon(activityType: 'run' | 'ride' | 'pet') {
+  if (activityType === 'ride') {
+    return 'bicycle-outline';
+  }
+
+  if (activityType === 'pet') {
+    return 'paw-outline';
+  }
+
+  return 'walk-outline';
+}
+
+function getPrimaryActionLabel(status: UseActivityTrackingResult['status']) {
+  if (status === 'preparing') {
+    return 'Preparando';
   }
 
   if (status === 'paused') {
-    return 'Pausado';
+    return 'Reanudar';
   }
 
-  return 'Finalizada';
+  return 'Pausar';
 }
 
-function getActivityCopy(activityType: ActivityType) {
-  if (activityType === 'ride') {
-    return {
-      title: 'Pedaleo',
-      titleFull: 'Pedaleo en seguimiento',
-      statusRunning: 'Pedaleo en curso',
-      routeLabel: 'recorrido',
-    };
+function getPrimaryActionIcon(status: UseActivityTrackingResult['status']) {
+  if (status === 'preparing') {
+    return 'time-outline';
   }
 
-  return {
-    title: 'Carrera',
-    titleFull: 'Carrera en seguimiento',
-    statusRunning: 'Carrera en curso',
-    routeLabel: 'ruta',
-  };
+  if (status === 'paused') {
+    return 'play';
+  }
+
+  return 'pause';
 }
 
 export function ActivityTrackingView({
-  activityType,
   tracking,
+  activityType,
   onBack,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -90,22 +115,10 @@ export function ActivityTrackingView({
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
   const hasLocation = Boolean(tracking.currentLocation);
-  const statusLabel = getStatusLabel(tracking.status);
-  const copy = getActivityCopy(activityType);
-
-  const primaryActionLabel =
-    tracking.status === 'preparing'
-      ? 'Preparando'
-      : tracking.status === 'paused'
-        ? 'Reanudar'
-        : 'Pausar';
-
-  const primaryActionIcon =
-    tracking.status === 'preparing'
-      ? 'time-outline'
-      : tracking.status === 'paused'
-        ? 'play'
-        : 'pause';
+  const activityLabel = getActivityLabel(activityType);
+  const activityTitle = getActivityTitle(activityType);
+  const primaryActionLabel = getPrimaryActionLabel(tracking.status);
+  const primaryActionIcon = getPrimaryActionIcon(tracking.status);
 
   const importantNotifications = useMemo<ImportantNotification[]>(() => {
     const items: ImportantNotification[] = [];
@@ -123,8 +136,7 @@ export function ActivityTrackingView({
       items.push({
         id: 'gps-waiting',
         title: 'Esperando señal GPS',
-        message:
-          'Aún no llega una ubicación válida para comenzar a registrar la actividad.',
+        message: `Aún no llega una ubicación válida para comenzar a registrar la ${activityLabel}.`,
         badge: 'GPS',
         icon: 'location-outline',
         tone: 'warning',
@@ -132,7 +144,7 @@ export function ActivityTrackingView({
     }
 
     return items;
-  }, [hasLocation, tracking.errorMessage, tracking.status]);
+  }, [activityLabel, hasLocation, tracking.errorMessage, tracking.status]);
 
   const activeImportantNotification =
     importantNotifications.length > 0 ? importantNotifications[0] : null;
@@ -155,14 +167,21 @@ export function ActivityTrackingView({
         icon: 'time-outline',
       },
       {
+        id: 'ascent',
+        title: 'Ascenso acumulado',
+        message: `Ascenso positivo acumulado: ${tracking.ascentLabel} m.`,
+        time: 'En vivo',
+        icon: 'trending-up-outline',
+      },
+      {
         id: 'state',
         title:
           tracking.status === 'paused'
-            ? 'Sesión pausada'
+            ? `${activityTitle} en pausa`
             : tracking.status === 'running'
-              ? copy.statusRunning
+              ? `${activityTitle} en curso`
               : tracking.status === 'preparing'
-                ? 'Inicializando actividad'
+                ? 'Inicializando seguimiento'
                 : 'Sesión finalizada',
         message:
           tracking.status === 'paused'
@@ -170,8 +189,8 @@ export function ActivityTrackingView({
             : tracking.status === 'running'
               ? `Velocidad actual: ${tracking.speedKmh} km/h.`
               : tracking.status === 'preparing'
-                ? 'El sistema está preparando el seguimiento de la actividad.'
-                : 'La actividad terminó y está lista para el resumen.',
+                ? `El sistema está preparando el seguimiento de la ${activityLabel}.`
+                : 'El recorrido terminó y está listo para resumen.',
         time: 'Sistema',
         icon:
           tracking.status === 'paused'
@@ -187,16 +206,18 @@ export function ActivityTrackingView({
         id: 'route',
         title: 'Ruta registrada',
         message: hasLocation
-          ? `Se han marcado ${tracking.route.length} puntos en el ${copy.routeLabel}.`
+          ? `Se han marcado ${tracking.route.length} puntos en el recorrido.`
           : 'Todavía no hay puntos registrados en el mapa.',
         time: 'Mapa',
-        icon: 'map-outline',
+        icon: getRouteIcon(activityType),
       },
     ];
   }, [
-    copy.routeLabel,
-    copy.statusRunning,
+    activityLabel,
+    activityTitle,
+    activityType,
     hasLocation,
+    tracking.ascentLabel,
     tracking.distanceKm,
     tracking.elapsedLabel,
     tracking.route.length,
@@ -245,8 +266,14 @@ export function ActivityTrackingView({
     tracking.handlePauseResume();
   };
 
+  const handleCloseSummary = () => {
+    if (typeof tracking.closeSummary === 'function') {
+      tracking.closeSummary();
+    }
+  };
+
   const handleBackFromSummary = () => {
-    tracking.closeSummary();
+    handleCloseSummary();
     onBack();
   };
 
@@ -273,6 +300,7 @@ export function ActivityTrackingView({
 
       <View style={styles.mapStage}>
         <TrackingMap
+          activityType={activityType}
           route={tracking.route}
           currentLocation={tracking.currentLocation}
         />
@@ -327,6 +355,15 @@ export function ActivityTrackingView({
             <Text style={styles.statPillLabel}>TIEMPO</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statPillValue}>{tracking.elapsedLabel}</Text>
+            </View>
+          </View>
+
+          <View style={styles.statPill}>
+            <View style={[styles.statAccent, styles.ascentAccent]} />
+            <Text style={styles.statPillLabel}>ASCENSO</Text>
+            <View style={styles.statValueRow}>
+              <Text style={styles.statPillValue}>{tracking.ascentLabel}</Text>
+              <Text style={styles.statPillUnit}>m</Text>
             </View>
           </View>
         </View>
@@ -484,7 +521,7 @@ export function ActivityTrackingView({
         visible={tracking.summaryVisible}
         transparent
         animationType="fade"
-        onRequestClose={tracking.closeSummary}>
+        onRequestClose={handleCloseSummary}>
         <View style={styles.summaryBackdrop}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{tracking.summaryTitle}</Text>
@@ -510,12 +547,19 @@ export function ActivityTrackingView({
                   {tracking.summaryData?.speed ?? '0.0 km/h'}
                 </Text>
               </View>
+
+              <View style={styles.summaryMetric}>
+                <Text style={styles.summaryLabel}>Ascenso</Text>
+                <Text style={styles.summaryValue}>
+                  {tracking.summaryData?.ascent ?? '0 m'}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.summaryActions}>
               <Pressable
                 style={[styles.summaryButton, styles.summaryButtonSecondary]}
-                onPress={tracking.closeSummary}>
+                onPress={handleCloseSummary}>
                 <Text style={styles.summaryButtonSecondaryText}>Cerrar</Text>
               </Pressable>
 

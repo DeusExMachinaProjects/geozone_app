@@ -1,16 +1,17 @@
 import React from 'react';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {PetTrackingView} from '../features/pet-tracking/components/PetTrackingView';
-import {usePetTracking} from '../features/pet-tracking/hooks/usePetTracking';
+import {ActivityTrackingView} from '../features/tracking/components/ActivityTrackingView';
+import {useActivityTracking} from '../features/tracking/hooks/useActivityTracking';
 import type {RootStackParamList} from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PetTracking'>;
 
 export function PetTrackingScreen({navigation}: Props) {
-  const tracking = usePetTracking();
+  const tracking = useActivityTracking({activityType: 'pet'});
 
   return (
-    <PetTrackingView
+    <ActivityTrackingView
+      activityType="pet"
       tracking={tracking}
       onBack={() => navigation.goBack()}
     />

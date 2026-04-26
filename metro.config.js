@@ -1,11 +1,20 @@
 const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
 
-/**
- * Metro configuration
- * https://metrobundler.dev/docs/configuration
- *
- * @type {import('metro-config').MetroConfig}
- */
-const config = {};
+const defaultConfig = getDefaultConfig(__dirname);
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+const config = {
+  resolver: {
+    blockList: [
+      /.*[\\/]\.gradle[\\/].*/,
+      /.*[\\/]android[\\/]build[\\/].*/,
+      /.*[\\/]android[\\/]app[\\/]build[\\/].*/,
+      /.*[\\/]ios[\\/]build[\\/].*/,
+      /.*[\\/]node_modules[\\/].+[\\/]android[\\/]build[\\/].*/,
+      /.*[\\/]node_modules[\\/].+[\\/]ios[\\/]build[\\/].*/,
+      /.*[\\/]generated[\\/]ksp[\\/].*/,
+    ],
+  },
+  watchFolders: [__dirname],
+};
+
+module.exports = mergeConfig(defaultConfig, config);

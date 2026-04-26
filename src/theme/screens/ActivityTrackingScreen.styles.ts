@@ -123,6 +123,9 @@ export const styles = StyleSheet.create({
   timeAccent: {
     backgroundColor: '#FF6B52',
   },
+  ascentAccent: {
+    backgroundColor: '#7AE582',
+  },
   statPillLabel: {
     color: '#C9D2DB',
     fontSize: 8,

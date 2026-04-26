@@ -13,6 +13,7 @@ export type RootStackParamList = {
   RideTracking: undefined;
   PetTracking: undefined;
   Pet: undefined;
+  Avatar: undefined;
 };
 
 export type MainTabParamList = {
