@@ -16,6 +16,8 @@ import {RunTrackingScreen} from '../screens/RunTrackingScreen';
 import {RideTrackingScreen} from '../screens/RideTrackingScreen';
 import {PetTrackingScreen} from '../screens/PetTrackingScreen';
 import {PetScreen} from '../screens/PetScreen';
+import {useAuth} from '../app/providers/AuthProvider';
+import {AvatarScreen} from '../screens/AvatarScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -32,43 +34,59 @@ const navigationTheme = {
 };
 
 export function RootNavigator() {
+  const {status} = useAuth();
+
   return (
     <NavigationContainer theme={navigationTheme}>
       <Stack.Navigator
-        initialRouteName="Splash"
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
         }}>
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-        <Stack.Screen name="Auth" component={AuthScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="MainTabs" component={AppTabs} />
-        <Stack.Screen name="Run" component={RunScreen} />
-        <Stack.Screen name="Ride" component={RideScreen} />
-        <Stack.Screen name="Options" component={OptionsScreen} />
-        <Stack.Screen name="Missions" component={MissionsScreen} />
-        <Stack.Screen
-          name="RunTracking"
-          component={RunTrackingScreen}
-          options={{headerShown: false}}
-        />
-        <Stack.Screen
-          name="RideTracking"
-          component={RideTrackingScreen}
-          options={{headerShown: false}}
-        />
-        <Stack.Screen
-          name="PetTracking"
-          component={PetTrackingScreen}
-          options={{headerShown: false}}
-        />
-        <Stack.Screen
-          name="Pet"
-          component={PetScreen}
-          options={{headerShown: false}}
-        />
+        {status === 'loading' ? (
+          <Stack.Screen name="Splash" component={SplashScreen} />
+        ) : status === 'authenticated' ? (
+          <>
+            <Stack.Screen name="MainTabs" component={AppTabs} />
+            <Stack.Screen name="Run" component={RunScreen} />
+            <Stack.Screen name="Ride" component={RideScreen} />
+            <Stack.Screen name="Options" component={OptionsScreen} />
+            <Stack.Screen name="Missions" component={MissionsScreen} />
+            <Stack.Screen
+              name="RunTracking"
+              component={RunTrackingScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="RideTracking"
+              component={RideTrackingScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="PetTracking"
+              component={PetTrackingScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="Pet"
+              component={PetScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="Avatar"
+              component={AvatarScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+            <Stack.Screen name="Auth" component={AuthScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

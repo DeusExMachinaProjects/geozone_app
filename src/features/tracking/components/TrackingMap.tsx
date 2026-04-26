@@ -1,108 +1,81 @@
-import React, {useCallback, useEffect, useMemo, useRef} from 'react';
-import {Text, View} from 'react-native';
+import React, {useMemo, useRef} from 'react';
+import {StyleSheet, View} from 'react-native';
 import {WebView} from 'react-native-webview';
-import type {TrackingPoint} from '../types';
-import {styles} from './TrackingMap.styles';
-import {
-  buildTrackingMapHtml,
-  type TrackingMapPayload,
-} from './TrackingMapHtml';
+import {buildTrackingMapHtml, type TrackingMapPayload} from './TrackingMapHtml';
 
-type Props = {
-  route: TrackingPoint[];
-  currentLocation: TrackingPoint | null;
-};
-
-type SerializablePoint = {
+type TrackingMapPoint = {
   latitude: number;
   longitude: number;
 };
 
-function isValidPoint(
-  point: TrackingPoint | null | undefined,
-): point is TrackingPoint {
-  return Boolean(
-    point &&
-      Number.isFinite(point.latitude) &&
-      Number.isFinite(point.longitude),
+type TrackingMapProps = {
+  route: TrackingMapPoint[];
+  currentLocation: TrackingMapPoint | null;
+  activityType?: 'run' | 'ride' | 'pet';
+};
+
+export function TrackingMap({
+  route,
+  currentLocation,
+  activityType = 'run',
+}: TrackingMapProps) {
+  const webViewRef = useRef<WebView>(null);
+
+  const payload = useMemo<TrackingMapPayload>(
+    () => ({
+      route,
+      currentLocation,
+      activityType,
+    }),
+    [activityType, currentLocation, route],
   );
-}
 
-function toSerializablePoint(point: TrackingPoint): SerializablePoint {
-  return {
-    latitude: point.latitude,
-    longitude: point.longitude,
-  };
-}
+  const html = useMemo(() => buildTrackingMapHtml(payload), [payload]);
 
-export function TrackingMap({route, currentLocation}: Props) {
-  const webViewRef = useRef<WebView | null>(null);
-  const didLoadRef = useRef(false);
-
-  const payload = useMemo<TrackingMapPayload>(() => {
-    return {
-      route: route.filter(isValidPoint).map(toSerializablePoint),
-      currentLocation: isValidPoint(currentLocation)
-        ? toSerializablePoint(currentLocation)
-        : null,
-    };
-  }, [route, currentLocation]);
-
-  const initialHtml = useMemo(() => {
-    return buildTrackingMapHtml({
-      route: [],
-      currentLocation: null,
-    });
-  }, []);
-
-  const pushPayloadToMap = useCallback(() => {
-    if (!didLoadRef.current || !webViewRef.current) {
-      return;
-    }
-
-    const script = `
-      window.__updateTracking && window.__updateTracking(${JSON.stringify(payload)});
+  const injectedJavaScript = useMemo(() => {
+    const serialized = JSON.stringify(payload);
+    return `
+      if (window.__updateTracking) {
+        window.__updateTracking(${serialized});
+      }
       true;
     `;
-
-    webViewRef.current.injectJavaScript(script);
   }, [payload]);
-
-  useEffect(() => {
-    pushPayloadToMap();
-  }, [pushPayloadToMap]);
-
-  const handleLoadEnd = useCallback(() => {
-    didLoadRef.current = true;
-    pushPayloadToMap();
-  }, [pushPayloadToMap]);
-
-  const hasLocation = Boolean(payload.currentLocation);
 
   return (
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
         originWhitelist={['*']}
-        source={{html: initialHtml, baseUrl: 'https://openfreemap.org/'}}
-        style={styles.map}
-        onLoadEnd={handleLoadEnd}
+        source={{html}}
+        style={styles.webview}
         javaScriptEnabled
         domStorageEnabled
-        scrollEnabled={false}
+        cacheEnabled={false}
+        injectedJavaScript={injectedJavaScript}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
         setSupportMultipleWindows={false}
+        nestedScrollEnabled={false}
+        overScrollMode="never"
+        scrollEnabled={false}
+        bounces={false}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       />
-
-      {!hasLocation ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Esperando GPS...</Text>
-          <Text style={styles.emptyText}>
-            Cuando llegue la ubicación, el mapa inclinado seguirá tu posición y dibujará la ruta.
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: 24,
+    backgroundColor: '#050505',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
+});

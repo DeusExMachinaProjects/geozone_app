@@ -1,50 +1,47 @@
 import React from 'react';
-import {Pressable, StatusBar, Text, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ScreenContainer} from '../components/ScreenContainer';
-import {styles} from '../theme/screens/RideScreen.styles';
+import {ActivityModeScreen} from '../features/activity/screens/ActivityModeScreen';
 import type {RootStackParamList} from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+const RIDE_CONFIG = {
+  accentColor: '#FF3E38',
+  accentSoft: 'rgba(255, 62, 56, 0.12)',
+  buttonTextColor: '#FFFFFF',
+  badge: 'RIDE',
+  title: 'Modo Bicicleta',
+  subtitle: 'Registra tu pedaleo con vista en vivo, distancia acumulada, velocidad y ascenso.',
+  summaryTitle: 'Sesión sugerida',
+  summaryMetrics: [
+    {label: 'RUTA', value: '12 km'},
+    {label: 'DESNIVEL', value: '180 m'},
+    {label: 'TIEMPO', value: '45 min'},
+  ],
+  summaryLines: [
+    'Ideal para recorridos urbanos o tramos mixtos con ritmo sostenido.',
+    'El tracking mostrará un rastro de bicicleta sobre el mapa durante el recorrido.',
+  ],
+  recommendationsTitle: 'Preparación recomendada',
+  recommendations: [
+    'Revisa frenos, presión de neumáticos y ajuste general antes de salir.',
+    'Usa casco y elementos reflectantes si habrá poca luz.',
+    'Controla la velocidad en bajadas o zonas con tránsito.',
+    'Si usas bici eléctrica, revisa carga y autonomía antes de iniciar.',
+  ],
+  primaryLabel: 'Iniciar pedaleo',
+  helperText: 'Al iniciar se abrirá el tracking en vivo de bicicleta.',
+} as const;
 
 export function RideScreen() {
   const navigation = useNavigation<NavigationProp>();
 
   return (
-    <ScreenContainer scroll contentStyle={styles.content}>
-      <StatusBar barStyle="light-content" backgroundColor="#050505" />
-
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>← Volver</Text>
-        </Pressable>
-
-        <Text style={styles.title}>Modo Pedalear</Text>
-        <Text style={styles.subtitle}>
-          Sigue rutas, gana XP y registra tus recorridos en bici.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sesión sugerida</Text>
-        <Text style={styles.cardText}>Ruta urbana: 12 km</Text>
-        <Text style={styles.cardText}>Desnivel: 180 m</Text>
-        <Text style={styles.cardText}>Tiempo estimado: 45 min</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Preparación</Text>
-        <Text style={styles.cardText}>
-          Revisa casco, neumáticos y batería si usas bicicleta eléctrica.
-        </Text>
-
-        <Pressable
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate('RideTracking')}>
-          <Text style={styles.primaryButtonText}>Iniciar pedaleo</Text>
-        </Pressable>
-      </View>
-    </ScreenContainer>
+    <ActivityModeScreen
+      config={RIDE_CONFIG}
+      onBack={() => navigation.goBack()}
+      onStart={() => navigation.navigate('RideTracking')}
+    />
   );
 }

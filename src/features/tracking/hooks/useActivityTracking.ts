@@ -1,18 +1,5 @@
+import {Alert, AppState} from 'react-native';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {AppState, Linking, PermissionsAndroid, Platform} from 'react-native';
-import type {
-  ActivityType,
-  RunStatus,
-  TrackingPoint,
-  TrackingSummary,
-} from '../types';
-import {
-  deriveErrorMessage,
-  formatDistanceKm,
-  formatElapsedFromMs,
-  formatSpeedKmh,
-  isSamePoint,
-} from '../utils/trackingCalculations';
 import {
   getNativeTrackingSnapshot,
   openNativeLocationSettings,
@@ -20,433 +7,380 @@ import {
   resumeNativeTracking,
   startNativeTracking,
   stopNativeTracking,
-  type NativeTrackingSnapshot,
+  type ActivityTrackingSnapshot,
 } from '../../../services/location';
+import type {ActivityType, TrackingPoint} from '../../tracking/types';
+import {
+  formatAscentMeters,
+  formatDistanceKm,
+  formatElapsedTime,
+  formatSpeedKmh,
+} from '../utils/trackingCalculations';
 
-type UseActivityTrackingParams = {
+type UseActivityTrackingOptions = {
   activityType: ActivityType;
+  onClose: () => void;
 };
 
-function getActivityConfig(activityType: ActivityType) {
-  if (activityType === 'ride') {
-    return {
-      summaryTitle: 'Pedaleo finalizado',
-    };
-  }
+type TrackingUiStatus = 'idle' | 'preparing' | 'running' | 'paused' | 'finished';
 
+type TrackingSummaryData = {
+  time: string;
+  distance: string;
+  speed: string;
+  ascent: string;
+};
+
+export type UseActivityTrackingResult = {
+  activityType: ActivityType;
+  route: TrackingPoint[];
+  currentLocation: TrackingPoint | null;
+  currentPoint: TrackingPoint | null;
+  status: TrackingUiStatus;
+  nativeStatus: ActivityTrackingSnapshot['status'];
+  errorMessage: string | null;
+  distanceMeters: number;
+  durationMs: number;
+  ascentMeters: number;
+  currentAltitudeMeters: number | null;
+  currentSpeedMps: number;
+  distanceKm: string;
+  speedKmh: string;
+  elapsedLabel: string;
+  ascentLabel: string;
+  summaryVisible: boolean;
+  summaryTitle: string;
+  summaryData: TrackingSummaryData | null;
+  exitModalVisible: boolean;
+  openExitModal: () => void;
+  closeExitModal: () => void;
+  confirmExit: () => Promise<void>;
+  closeSummary: () => void;
+  openLocationSettings: () => void;
+  handlePauseResume: () => Promise<void>;
+  handleFinish: () => Promise<void>;
+  refresh: () => Promise<void>;
+};
+
+const EMPTY_SNAPSHOT: ActivityTrackingSnapshot = {
+  activityType: null,
+  status: 'idle',
+  startedAt: null,
+  distanceMeters: 0,
+  durationMs: 0,
+  currentSpeedMps: 0,
+  ascentMeters: 0,
+  currentAltitudeMeters: null,
+  route: [],
+  lastLocation: null,
+};
+
+function normalizeSnapshot(
+  snapshot?: Partial<ActivityTrackingSnapshot> | null,
+): ActivityTrackingSnapshot {
   return {
-    summaryTitle: 'Carrera finalizada',
+    activityType: snapshot?.activityType ?? null,
+    status: snapshot?.status ?? 'idle',
+    startedAt: snapshot?.startedAt ?? null,
+    distanceMeters: Number(snapshot?.distanceMeters ?? 0),
+    durationMs: Number(snapshot?.durationMs ?? 0),
+    currentSpeedMps: Number(snapshot?.currentSpeedMps ?? 0),
+    ascentMeters: Number(snapshot?.ascentMeters ?? 0),
+    currentAltitudeMeters: snapshot?.currentAltitudeMeters ?? null,
+    route: Array.isArray(snapshot?.route) ? snapshot.route : [],
+    lastLocation: snapshot?.lastLocation ?? null,
   };
 }
 
-function getReadableError(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) {
-    return error.message;
+function mapUiStatus(
+  nativeStatus: ActivityTrackingSnapshot['status'],
+  isPreparing: boolean,
+  summaryVisible: boolean,
+): TrackingUiStatus {
+  if (summaryVisible) {
+    return 'finished';
   }
 
-  if (typeof error === 'string' && error.trim()) {
-    return error;
+  if (isPreparing) {
+    return 'preparing';
   }
 
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    typeof (error as {message?: unknown}).message === 'string'
-  ) {
-    return (error as {message: string}).message;
+  if (nativeStatus === 'paused') {
+    return 'paused';
   }
 
-  return fallback;
+  if (nativeStatus === 'tracking') {
+    return 'running';
+  }
+
+  return 'idle';
+}
+
+function getSummaryTitle(activityType: ActivityType): string {
+  switch (activityType) {
+    case 'run':
+      return 'Resumen de carrera';
+    case 'ride':
+      return 'Resumen de pedaleo';
+    case 'pet':
+      return 'Resumen de paseo';
+    default:
+      return 'Resumen de actividad';
+  }
+}
+
+function buildSummaryData(
+  snapshot: ActivityTrackingSnapshot,
+): TrackingSummaryData {
+  const totalSeconds = snapshot.durationMs / 1000;
+  const avgSpeedMps =
+    totalSeconds > 0 ? snapshot.distanceMeters / totalSeconds : 0;
+
+  return {
+    time: formatElapsedTime(snapshot.durationMs),
+    distance: formatDistanceKm(snapshot.distanceMeters),
+    speed: formatSpeedKmh(avgSpeedMps),
+    ascent: formatAscentMeters(snapshot.ascentMeters),
+  };
 }
 
 export function useActivityTracking({
   activityType,
-}: UseActivityTrackingParams) {
-  const config = useMemo(() => getActivityConfig(activityType), [activityType]);
-
-  const [status, setStatus] = useState<RunStatus>('preparing');
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [distanceMeters, setDistanceMeters] = useState(0);
-  const [route, setRoute] = useState<TrackingPoint[]>([]);
-  const [currentLocation, setCurrentLocation] = useState<TrackingPoint | null>(
-    null,
-  );
-  const [currentSpeedMps, setCurrentSpeedMps] = useState(0);
+  onClose,
+}: UseActivityTrackingOptions): UseActivityTrackingResult {
+  const [snapshot, setSnapshot] =
+    useState<ActivityTrackingSnapshot>(EMPTY_SNAPSHOT);
+  const [isPreparing, setIsPreparing] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
-  const [summaryData, setSummaryData] = useState<TrackingSummary | null>(null);
+  const [summaryData, setSummaryData] = useState<TrackingSummaryData | null>(
+    null,
+  );
+  const [exitModalVisible, setExitModalVisible] = useState(false);
 
   const appStateRef = useRef(AppState.currentState);
-  const gpsPromptedRef = useRef(false);
-  const isMountedRef = useRef(true);
-  const initialStartAttemptedRef = useRef(false);
-  const permissionFlowRef = useRef<Promise<boolean> | null>(null);
-  const notificationAskedRef = useRef(false);
-  const finishedSnapshotHandledRef = useRef(false);
 
-  const distanceKm = useMemo(
-    () => formatDistanceKm(distanceMeters),
-    [distanceMeters],
+  const hydrateSnapshot = useCallback(
+    (nextSnapshot?: Partial<ActivityTrackingSnapshot> | null) => {
+      setSnapshot(normalizeSnapshot(nextSnapshot));
+    },
+    [],
   );
 
-  const speedKmh = useMemo(
-    () => formatSpeedKmh(currentSpeedMps),
-    [currentSpeedMps],
-  );
-
-  const averageSpeedKmh = useMemo(() => {
-    if (elapsedMs <= 0) {
-      return '0.0';
-    }
-
-    const avgMps = distanceMeters / (elapsedMs / 1000);
-    return formatSpeedKmh(avgMps);
-  }, [distanceMeters, elapsedMs]);
-
-  const requestNotificationPermission = useCallback(async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    if (Platform.Version < 33) {
-      notificationAskedRef.current = true;
-      return true;
-    }
-
-    if (notificationAskedRef.current) {
-      return true;
-    }
-
-    const alreadyGranted = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-    );
-
-    if (alreadyGranted) {
-      notificationAskedRef.current = true;
-      return true;
-    }
-
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      {
-        title: 'Notificaciones de actividad',
-        message:
-          'GeoZone necesita mostrar una notificación mientras el seguimiento está activo.',
-        buttonPositive: 'Aceptar',
-        buttonNegative: 'Cancelar',
-      },
-    );
-
-    notificationAskedRef.current = true;
-    return result === PermissionsAndroid.RESULTS.GRANTED;
-  }, []);
-
-  const ensureTrackingPermissions = useCallback(async () => {
-    if (Platform.OS !== 'android') {
-      return false;
-    }
-
-    if (permissionFlowRef.current) {
-      return permissionFlowRef.current;
-    }
-
-    permissionFlowRef.current = (async () => {
-      const finePermission =
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
-      const coarsePermission =
-        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
-
-      const hasFine = await PermissionsAndroid.check(finePermission);
-      const hasCoarse = await PermissionsAndroid.check(coarsePermission);
-
-      if (hasFine || hasCoarse) {
-        await requestNotificationPermission();
-        return true;
-      }
-
-      const result = await PermissionsAndroid.request(finePermission, {
-        title: 'Permiso de ubicación',
-        message:
-          'GeoZone necesita tu ubicación para registrar tiempo, distancia, velocidad y dibujar la ruta en el mapa.',
-        buttonPositive: 'Aceptar',
-        buttonNegative: 'Cancelar',
-      });
-
-      if (result !== PermissionsAndroid.RESULTS.GRANTED) {
-        if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-          Linking.openSettings().catch(() => {});
-        }
-        return false;
-      }
-
-      await requestNotificationPermission();
-      return true;
-    })().finally(() => {
-      permissionFlowRef.current = null;
-    });
-
-    return permissionFlowRef.current;
-  }, [requestNotificationPermission]);
-
-  const applySnapshot = useCallback(async (snapshot: NativeTrackingSnapshot | null) => {
-    if (!snapshot || !isMountedRef.current) {
-      return;
-    }
-
-    setElapsedMs(snapshot.elapsedMs);
-    setDistanceMeters(snapshot.distanceMeters);
-    setCurrentSpeedMps(snapshot.speedMps);
-
-    const nextLocation = snapshot.hasLocation ? snapshot.location : null;
-
-    setCurrentLocation(prev =>
-      isSamePoint(prev, nextLocation) ? prev : nextLocation,
-    );
-
-    setRoute(snapshot.route ?? []);
-    setErrorMessage(deriveErrorMessage(snapshot.errorCode));
-    if (snapshot.isFinished && !finishedSnapshotHandledRef.current) {
-      finishedSnapshotHandledRef.current = true;
-
-      const finishedElapsedMs = snapshot.elapsedMs;
-      const finishedDistanceMeters = snapshot.distanceMeters;
-      const finishedAverageSpeed =
-        finishedElapsedMs > 0
-          ? formatSpeedKmh(finishedDistanceMeters / (finishedElapsedMs / 1000))
-          : '0.0';
-
-      setCurrentSpeedMps(0);
-      setSummaryData({
-        time: formatElapsedFromMs(finishedElapsedMs),
-        distance: `${formatDistanceKm(finishedDistanceMeters)} km`,
-        speed: `${finishedAverageSpeed} km/h`,
-      });
-      setSummaryVisible(true);
-    }
-
-    setStatus(prev => {
-      if (prev === 'finished') {
-        return prev;
-      }
-
-      if (snapshot.isFinished) {
-        return 'finished';
-      }
-
-      if (!snapshot.isActive) {
-        return 'paused';
-      }
-
-      if (snapshot.isPaused) {
-        return 'paused';
-      }
-
-      if (snapshot.hasLocation) {
-        return 'running';
-      }
-
-      if (snapshot.errorCode) {
-        return 'paused';
-      }
-
-      return 'preparing';
-    });
-
-    if (snapshot.errorCode === 'gps_disabled') {
-      if (!gpsPromptedRef.current) {
-        gpsPromptedRef.current = true;
-        try {
-          await openNativeLocationSettings();
-        } catch {}
-      }
-    } else {
-      gpsPromptedRef.current = false;
-    }
-  }, []);
-
-  const syncSnapshot = useCallback(async () => {
-    if (Platform.OS !== 'android') {
-      setErrorMessage(
-        'La versión actual del seguimiento en segundo plano quedó preparada primero para Android.',
-      );
-      return null;
-    }
-
+  const refresh = useCallback(async () => {
     try {
-      const snapshot = await getNativeTrackingSnapshot();
-      await applySnapshot(snapshot);
-      return snapshot;
+      const current = await getNativeTrackingSnapshot();
+      hydrateSnapshot(current);
     } catch (error) {
-      if (isMountedRef.current) {
-        setErrorMessage(
-          getReadableError(error, 'No se pudo sincronizar el seguimiento.'),
-        );
-      }
-      return null;
+      console.warn('No se pudo refrescar el snapshot de tracking', error);
     }
-  }, [applySnapshot]);
+  }, [hydrateSnapshot]);
 
   const initializeTracking = useCallback(async () => {
-    if (Platform.OS !== 'android') {
-      setStatus('paused');
-      setErrorMessage(
-        'La versión actual del seguimiento en segundo plano quedó preparada primero para Android.',
-      );
-      return;
-    }
-
-    setStatus('preparing');
-
-    const granted = await ensureTrackingPermissions();
-
-    if (!granted) {
-      setStatus('paused');
-      setErrorMessage(
-        'Permiso de ubicación requerido para iniciar el seguimiento.',
-      );
-      return;
-    }
+    setIsPreparing(true);
+    setErrorMessage(null);
 
     try {
-      finishedSnapshotHandledRef.current = false;
-      setSummaryVisible(false);
-      setSummaryData(null);
-      await startNativeTracking(activityType);
-      await syncSnapshot();
-    } catch (error) {
-      setStatus('paused');
-      setErrorMessage(
-        getReadableError(error, 'No se pudo iniciar el seguimiento nativo.'),
+      const currentSnapshot = normalizeSnapshot(
+        await getNativeTrackingSnapshot(),
       );
+
+      const alreadyActive =
+        currentSnapshot.status === 'tracking' ||
+        currentSnapshot.status === 'paused';
+
+      if (alreadyActive) {
+        hydrateSnapshot(currentSnapshot);
+        return;
+      }
+
+      const started = await startNativeTracking(activityType);
+
+      if (!started) {
+        const message =
+          'No se pudieron obtener los permisos necesarios de ubicación.';
+        setErrorMessage(message);
+        return;
+      }
+
+      const startedSnapshot = await getNativeTrackingSnapshot();
+      hydrateSnapshot(startedSnapshot);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo iniciar el seguimiento.';
+      setErrorMessage(message);
+      Alert.alert('Seguimiento', message);
+    } finally {
+      setIsPreparing(false);
     }
-  }, [activityType, ensureTrackingPermissions, syncSnapshot]);
+  }, [activityType, hydrateSnapshot]);
 
   useEffect(() => {
-    isMountedRef.current = true;
-
-    if (!initialStartAttemptedRef.current) {
-      initialStartAttemptedRef.current = true;
-      initializeTracking();
-    }
-
-    return () => {
-      isMountedRef.current = false;
-    };
+    void initializeTracking();
   }, [initializeTracking]);
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || status === 'finished') {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      if (!permissionFlowRef.current) {
-        syncSnapshot();
-      }
-    }, 1000);
-
-    return () => clearInterval(intervalId);
-  }, [status, syncSnapshot]);
-
-  useEffect(() => {
     const subscription = AppState.addEventListener('change', nextState => {
-      const previousState = appStateRef.current;
-      appStateRef.current = nextState;
+      const wasInBackground =
+        appStateRef.current === 'background' || appStateRef.current === 'inactive';
+      const isNowActive = nextState === 'active';
 
-      const cameToForeground =
-        previousState.match(/inactive|background/) && nextState === 'active';
-
-      if (cameToForeground && !permissionFlowRef.current) {
-        syncSnapshot();
+      if (wasInBackground && isNowActive) {
+        void refresh();
       }
+
+      appStateRef.current = nextState;
     });
 
     return () => {
       subscription.remove();
     };
-  }, [syncSnapshot]);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (summaryVisible) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void refresh();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [refresh, summaryVisible]);
 
   const handlePauseResume = useCallback(async () => {
-    try {
-      if (status === 'running') {
-        await pauseNativeTracking();
-        await syncSnapshot();
-        return;
-      }
-
-      const granted = await ensureTrackingPermissions();
-
-      if (!granted) {
-        setStatus('paused');
-        setErrorMessage(
-          'Permiso de ubicación requerido para continuar.',
-        );
-        return;
-      }
-
-      await resumeNativeTracking();
-      await syncSnapshot();
-    } catch (error) {
-      setErrorMessage(
-        getReadableError(error, 'No se pudo cambiar el estado del seguimiento.'),
-      );
+    if (isPreparing || summaryVisible) {
+      return;
     }
-  }, [ensureTrackingPermissions, status, syncSnapshot]);
+
+    try {
+      const updatedSnapshot =
+        snapshot.status === 'paused'
+          ? await resumeNativeTracking()
+          : await pauseNativeTracking();
+
+      hydrateSnapshot(updatedSnapshot);
+      setErrorMessage(null);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo cambiar el estado de la actividad.';
+      setErrorMessage(message);
+      Alert.alert('Actividad', message);
+    }
+  }, [hydrateSnapshot, isPreparing, snapshot.status, summaryVisible]);
 
   const handleFinish = useCallback(async () => {
-    let finalSnapshot: NativeTrackingSnapshot | null = null;
+    if (isPreparing || summaryVisible) {
+      return;
+    }
 
     try {
-      finalSnapshot = await syncSnapshot();
-    } catch {}
+      const finalSnapshot = normalizeSnapshot(await stopNativeTracking());
 
-    const finalElapsedMs = finalSnapshot?.elapsedMs ?? elapsedMs;
-    const finalDistanceMeters = finalSnapshot?.distanceMeters ?? distanceMeters;
-    const finalAverageSpeed =
-      finalElapsedMs > 0
-        ? formatSpeedKmh(finalDistanceMeters / (finalElapsedMs / 1000))
-        : '0.0';
+      hydrateSnapshot(finalSnapshot);
+      setSummaryData(buildSummaryData(finalSnapshot));
+      setSummaryVisible(true);
+      setExitModalVisible(false);
+      setErrorMessage(null);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo finalizar la actividad.';
+      setErrorMessage(message);
+      Alert.alert('Actividad', message);
+    }
+  }, [hydrateSnapshot, isPreparing, summaryVisible]);
 
+  const openExitModal = useCallback(() => {
+    setExitModalVisible(true);
+  }, []);
+
+  const closeExitModal = useCallback(() => {
+    setExitModalVisible(false);
+  }, []);
+
+  const confirmExit = useCallback(async () => {
     try {
+      setExitModalVisible(false);
       await stopNativeTracking();
-    } catch {}
-
-    setStatus('finished');
-    setCurrentSpeedMps(0);
-    finishedSnapshotHandledRef.current = true;
-
-    setSummaryData({
-      time: formatElapsedFromMs(finalElapsedMs),
-      distance: `${formatDistanceKm(finalDistanceMeters)} km`,
-      speed: `${finalAverageSpeed} km/h`,
-    });
-
-    setSummaryVisible(true);
-  }, [distanceMeters, elapsedMs, syncSnapshot]);
+      onClose();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo salir de la actividad.';
+      setErrorMessage(message);
+      Alert.alert('Actividad', message);
+    }
+  }, [onClose]);
 
   const closeSummary = useCallback(() => {
     setSummaryVisible(false);
   }, []);
 
+  const openLocationSettings = useCallback(() => {
+    void openNativeLocationSettings();
+  }, []);
+
+  const status = useMemo(
+    () => mapUiStatus(snapshot.status, isPreparing, summaryVisible),
+    [snapshot.status, isPreparing, summaryVisible],
+  );
+
+  const distanceKm = useMemo(
+    () => formatDistanceKm(snapshot.distanceMeters),
+    [snapshot.distanceMeters],
+  );
+
+  const speedKmh = useMemo(
+    () => formatSpeedKmh(snapshot.currentSpeedMps),
+    [snapshot.currentSpeedMps],
+  );
+
+  const elapsedLabel = useMemo(
+    () => formatElapsedTime(snapshot.durationMs),
+    [snapshot.durationMs],
+  );
+
+  const ascentLabel = useMemo(
+    () => formatAscentMeters(snapshot.ascentMeters),
+    [snapshot.ascentMeters],
+  );
+
   return {
     activityType,
+    route: snapshot.route,
+    currentLocation: snapshot.lastLocation,
+    currentPoint: snapshot.lastLocation,
     status,
-    elapsedSeconds: Math.floor(elapsedMs / 1000),
-    elapsedLabel: formatElapsedFromMs(elapsedMs),
+    nativeStatus: snapshot.status,
+    errorMessage,
+    distanceMeters: snapshot.distanceMeters,
+    durationMs: snapshot.durationMs,
+    ascentMeters: snapshot.ascentMeters,
+    currentAltitudeMeters: snapshot.currentAltitudeMeters,
+    currentSpeedMps: snapshot.currentSpeedMps,
     distanceKm,
     speedKmh,
-    averageSpeedKmh,
-    route,
-    currentLocation,
-    errorMessage,
+    elapsedLabel,
+    ascentLabel,
     summaryVisible,
-    summaryTitle: config.summaryTitle,
+    summaryTitle: getSummaryTitle(activityType),
     summaryData,
+    exitModalVisible,
+    openExitModal,
+    closeExitModal,
+    confirmExit,
+    closeSummary,
+    openLocationSettings,
     handlePauseResume,
     handleFinish,
-    closeSummary,
+    refresh,
   };
 }
-
-export type UseActivityTrackingResult = ReturnType<typeof useActivityTracking>;

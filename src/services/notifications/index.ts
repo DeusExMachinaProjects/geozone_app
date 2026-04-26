@@ -1,4 +1,7 @@
-import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
+import notifee from '@notifee/react-native';
+import {Platform} from 'react-native';
+import {requestNotifications, RESULTS} from 'react-native-permissions';
+import {GEOZONE_CHANNELS, ensureNotificationChannels} from './channels';
 
 export type BusinessNotificationCategory =
   | 'missions'
@@ -6,60 +9,27 @@ export type BusinessNotificationCategory =
   | 'system'
   | 'pets';
 
-type BusinessNotificationsModuleShape = {
-  send(
-    title: string,
-    body: string,
-    category: BusinessNotificationCategory,
-    notificationId: number,
-  ): Promise<boolean>;
-};
-
-const BusinessNotifications =
-  NativeModules.BusinessNotifications as BusinessNotificationsModuleShape | undefined;
-
-function ensureModule() {
-  if (Platform.OS !== 'android') {
-    throw new Error('Las notificaciones de negocio quedaron implementadas primero para Android.');
+function getChannelId(category: BusinessNotificationCategory) {
+  switch (category) {
+    case 'missions':
+      return GEOZONE_CHANNELS.missions;
+    case 'community':
+      return GEOZONE_CHANNELS.community;
+    case 'pets':
+      return GEOZONE_CHANNELS.pets;
+    default:
+      return GEOZONE_CHANNELS.default;
   }
-
-  if (!BusinessNotifications || typeof BusinessNotifications.send !== 'function') {
-    throw new Error(
-      'El módulo nativo BusinessNotifications no quedó registrado. Revisa MainApplication.kt y recompila.',
-    );
-  }
-
-  return BusinessNotifications;
 }
 
 export async function ensureBusinessNotificationPermission() {
-  if (Platform.OS !== 'android') {
+  if (Platform.OS === 'android' && Number(Platform.Version) < 33) {
     return true;
   }
 
-  if (Platform.Version < 33) {
-    return true;
-  }
+  const {status} = await requestNotifications(['alert', 'sound']);
 
-  const alreadyGranted = await PermissionsAndroid.check(
-    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-  );
-
-  if (alreadyGranted) {
-    return true;
-  }
-
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-    {
-      title: 'Notificaciones de GeoZone',
-      message: 'GeoZone necesita permiso para mostrar avisos de misiones, comunidad y mascotas.',
-      buttonPositive: 'Aceptar',
-      buttonNegative: 'Cancelar',
-    },
-  );
-
-  return result === PermissionsAndroid.RESULTS.GRANTED;
+  return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
 }
 
 export async function sendBusinessNotification(params: {
@@ -74,12 +44,22 @@ export async function sendBusinessNotification(params: {
     throw new Error('Permiso de notificaciones no concedido.');
   }
 
-  const module = ensureModule();
+  await ensureNotificationChannels();
 
-  return module.send(
-    params.title,
-    params.body,
-    params.category ?? 'system',
-    params.notificationId ?? Date.now(),
-  );
+  await notifee.displayNotification({
+    id: String(params.notificationId ?? Date.now()),
+    title: params.title,
+    body: params.body,
+    android: {
+      channelId: getChannelId(params.category ?? 'system'),
+      pressAction: {
+        id: 'default',
+      },
+    },
+    ios: {
+      sound: 'default',
+    },
+  });
+
+  return true;
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import {StatusBar, Text, View} from 'react-native';
 import {ScreenContainer} from '../components/ScreenContainer';
+import {AvatarSummaryCard} from '../features/avatar/components/AvatarSummaryCard';
 import {styles} from '../theme/screens/ProfileScreen.styles';
 
 type StatCardProps = {
@@ -19,7 +20,7 @@ function StatCard({value, label}: StatCardProps) {
 
 export function ProfileScreen() {
   return (
-    <ScreenContainer contentStyle={styles.content}>
+    <ScreenContainer scroll contentStyle={styles.content}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
 
       <View style={styles.headerCard}>
@@ -82,6 +83,8 @@ export function ProfileScreen() {
           poniente.
         </Text>
       </View>
+
+      <AvatarSummaryCard />
 
       <View style={styles.infoCard}>
         <Text style={styles.cardTitle}>Amigos</Text>

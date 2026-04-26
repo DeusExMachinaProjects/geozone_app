@@ -12,6 +12,7 @@ export const palette = {
   borderStrong: 'rgba(255,255,255,0.20)',
   surface: 'rgba(255,255,255,0.07)',
   inputBg: '#111111',
+  brandZone: '#FF6B52',
 };
 
 export const styles = StyleSheet.create({
@@ -40,7 +41,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 42,
-    paddingBottom: 28,
+    paddingBottom: 68,
     justifyContent: 'space-between',
   },
 
@@ -56,14 +57,14 @@ export const styles = StyleSheet.create({
 
   bottomBlock: {
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 28,
   },
 
   loginWrapper: {
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 42,
-    paddingBottom: 28,
+    paddingBottom: 36,
     justifyContent: 'center',
   },
 
@@ -87,12 +88,19 @@ export const styles = StyleSheet.create({
   },
 
   brandTitle: {
-    color: palette.white,
     fontSize: 58,
     fontWeight: '900',
     letterSpacing: 8,
     lineHeight: 64,
     marginBottom: 14,
+  },
+
+  brandTitleGeo: {
+    color: palette.white,
+  },
+
+  brandTitleZone: {
+    color: palette.brandZone,
   },
 
   brandSubtitle: {
@@ -193,7 +201,7 @@ export const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    marginBottom: 20,
   },
 
   dividerLine: {
@@ -233,27 +241,40 @@ export const styles = StyleSheet.create({
     lineHeight: 34,
   },
 
+  socialIconImage: {
+    width: 28,
+    height: 28,
+  },
+
   buttonPressed: {
     opacity: 0.9,
     transform: [{scale: 0.98}],
   },
-  brandTitle: {
-    fontSize: 58,
-    fontWeight: '900',
-    letterSpacing: 8,
-    lineHeight: 64,
-    marginBottom: 14,
+
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+  passwordInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 16,
+    paddingLeft: 16,
+    paddingRight: 12,
   },
 
-  brandTitleGeo: {
-    color: palette.white,
+  passwordInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    paddingVertical: 15,
   },
 
-  brandTitleZone: {
-    color: '#FF6B52',
+  passwordToggle: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 10,
   },
-  socialIconImage: {
-    width: 28,
-    height: 28,
-  }
 });

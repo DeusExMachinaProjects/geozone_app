@@ -1,46 +1,49 @@
 import {StyleSheet} from 'react-native';
-import {spacing} from '../../theme';
 
 export const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
+  screen: {
+    flex: 1,
     backgroundColor: '#050505',
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
+    alignItems: 'center',
     paddingHorizontal: 24,
   },
 
-  logoWrapper: {
+  content: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
 
-  logoImage: {
+  logo: {
     width: 110,
     height: 110,
+    marginBottom: 14,
   },
 
-  title: {
-    fontSize: 40,
+  brandTitle: {
+    fontSize: 42,
     fontWeight: '900',
-    letterSpacing: 4,
-    lineHeight: 46,
+    letterSpacing: 1,
   },
 
-  titleGeo: {
-    color: '#FFFFFF',
+  brandTitleGeo: {
+    color: '#ffffff',
   },
 
-  titleZone: {
-    color: '#FF6B52',
+  brandTitleZone: {
+    color: '#ff5b0a',
   },
 
   subtitle: {
-    fontSize: 16,
-    color: '#E8A020',
+    marginTop: 10,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.2,
     textAlign: 'center',
-    letterSpacing: 0.8,
+  },
+
+  loaderWrapper: {
+    marginTop: 24,
   },
 });

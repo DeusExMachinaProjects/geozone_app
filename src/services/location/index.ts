@@ -1,77 +1,115 @@
-import {Linking, NativeModules, Platform} from 'react-native';
-import type {ActivityType, TrackingPoint} from '../../features/tracking/types';
+import {
+  finishTracker,
+  getTrackerSnapshot,
+  hydrateTrackerFromStorage,
+  pauseTracker,
+  resumeTracker,
+  startTracker,
+} from './tracker';
+import {
+  setTrackingBackgroundStatus,
+  startTrackingBackgroundRunner,
+  stopTrackingBackgroundRunner,
+} from './backgroundRunner';
+import {
+  ensureBackgroundTrackingPermission,
+  ensureTrackingPermissions,
+  showDeviceLocationSettingsAlert,
+  showLocationPermissionSettingsAlert,
+} from './permissions';
+import type {ActivityType} from './sessionStore';
 
-export type NativeTrackingSnapshot = {
-  isActive: boolean;
-  isPaused: boolean;
-  isFinished: boolean;
-  activityType: ActivityType;
-  elapsedMs: number;
-  distanceMeters: number;
-  speedMps: number;
-  hasLocation: boolean;
-  errorCode?: string | null;
-  location: TrackingPoint | null;
-  route: TrackingPoint[];
-};
+export type {ActivityType, TrackingPoint, TrackingSnapshot} from './sessionStore';
 
-type TrackingForegroundModuleShape = {
-  startTracking(activityType: ActivityType): Promise<boolean>;
-  pauseTracking(): Promise<boolean>;
-  resumeTracking(): Promise<boolean>;
-  stopTracking(): Promise<boolean>;
-  getTrackingSnapshot(): Promise<NativeTrackingSnapshot>;
-  openLocationSettings(): Promise<boolean>;
-};
+export async function requestTrackingPermissions() {
+  return ensureTrackingPermissions();
+}
 
-const TrackingForeground = NativeModules.TrackingForeground as
-  | TrackingForegroundModuleShape
-  | undefined;
-
-function ensureAndroidModule() {
-  if (Platform.OS !== 'android') {
-    throw new Error('El tracking nativo quedó implementado solo para Android.');
-  }
-
-  if (!TrackingForeground) {
-    throw new Error(
-      'El módulo nativo TrackingForeground no quedó registrado. Revisa MainApplication.kt y TrackingForegroundPackage.kt, luego recompila la APK.',
-    );
-  }
-
-  if (typeof TrackingForeground.startTracking !== 'function') {
-    throw new Error(
-      'TrackingForeground existe, pero startTracking no está disponible.',
-    );
-  }
-
-  return TrackingForeground;
+export async function requestBackgroundTrackingPermission() {
+  return ensureBackgroundTrackingPermission();
 }
 
 export async function startNativeTracking(activityType: ActivityType) {
-  return ensureAndroidModule().startTracking(activityType);
+  await startTracker(activityType);
+
+  try {
+    await startTrackingBackgroundRunner(activityType);
+  } catch (error) {
+    console.warn(
+      '[location] No se pudo iniciar el runner en segundo plano',
+      error,
+    );
+  }
+
+  return getTrackerSnapshot();
 }
 
 export async function pauseNativeTracking() {
-  return ensureAndroidModule().pauseTracking();
+  await pauseTracker();
+
+  const snapshot = getTrackerSnapshot();
+
+  try {
+    if (snapshot.isActive) {
+      await setTrackingBackgroundStatus('paused', snapshot.activityType);
+    }
+  } catch (error) {
+    console.warn(
+      '[location] No se pudo pausar el runner en segundo plano',
+      error,
+    );
+  }
+
+  return snapshot;
 }
 
 export async function resumeNativeTracking() {
-  return ensureAndroidModule().resumeTracking();
+  await resumeTracker();
+
+  const snapshot = getTrackerSnapshot();
+
+  try {
+    if (snapshot.isActive) {
+      await setTrackingBackgroundStatus('active', snapshot.activityType);
+    }
+  } catch (error) {
+    console.warn(
+      '[location] No se pudo reanudar el runner en segundo plano',
+      error,
+    );
+  }
+
+  return snapshot;
 }
 
 export async function stopNativeTracking() {
-  return ensureAndroidModule().stopTracking();
+  const finalSnapshot = getTrackerSnapshot();
+
+  try {
+    await finishTracker();
+  } finally {
+    try {
+      await stopTrackingBackgroundRunner();
+    } catch (error) {
+      console.warn(
+        '[location] No se pudo detener el runner en segundo plano',
+        error,
+      );
+    }
+  }
+
+  return finalSnapshot;
 }
 
 export async function getNativeTrackingSnapshot() {
-  return ensureAndroidModule().getTrackingSnapshot();
+  await hydrateTrackerFromStorage();
+  return getTrackerSnapshot();
 }
 
-export async function openNativeLocationSettings() {
-  if (Platform.OS === 'android' && TrackingForeground) {
-    return TrackingForeground.openLocationSettings();
-  }
+export function openNativeLocationSettings() {
+  showDeviceLocationSettingsAlert();
+}
 
-  return Linking.openSettings();
+export function openNativePermissionSettings() {
+  showLocationPermissionSettingsAlert();
 }
