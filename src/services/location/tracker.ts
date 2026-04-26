@@ -67,6 +67,7 @@ function cloneSnapshot(snapshot: TrackingSnapshot): TrackingSnapshot {
     ...snapshot,
     route: snapshot.route.map(clonePoint),
     lastPoint: snapshot.lastPoint ? clonePoint(snapshot.lastPoint) : null,
+    location: snapshot.location ? clonePoint(snapshot.location) : null,
   };
 }
 
@@ -207,10 +208,13 @@ function shouldUsePoint(point: TrackingPoint) {
   if (
     typeof point.accuracy === 'number' &&
     Number.isFinite(point.accuracy) &&
-    point.accuracy > 40
+    point.accuracy > 100
   ) {
     return false;
   }
+
+  return true;
+}
 
   return true;
 }
@@ -375,7 +379,7 @@ export async function upsertPosition(position: GeoPosition) {
 
   const point = createPointFromPosition(position);
 
-  if (!shouldUsePoint(point)) {
+  if (!shouldUsePoint(point, snapshot.lastPoint)) {
     return;
   }
 
@@ -401,12 +405,20 @@ export async function upsertPosition(position: GeoPosition) {
 
   trackerSession.currentSnapshot = {
     ...snapshot,
+
     route: nextRoute,
+
     lastPoint: point,
+    location: point,
+    hasLocation: true,
+    altitudeMeters: typeof point.altitude === 'number' ? point.altitude : null,
+    errorCode: null,
+
     distanceMeters: nextDistance,
     ascentMeters: nextAscent,
     elapsedMs: nextElapsedMs,
     speedMps: calculateSpeedMps(nextDistance, nextElapsedMs),
+
     lastUpdatedAt: Date.now(),
   };
 
