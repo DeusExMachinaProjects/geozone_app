@@ -1,460 +1,612 @@
-import {Platform} from 'react-native';
 import Geolocation, {
   type GeoError,
   type GeoPosition,
+  type GeoWatchOptions,
 } from 'react-native-geolocation-service';
 
-import type {ActivityType, TrackingPoint} from '../../features/tracking/types';
 import {
-  createIdleTrackingSnapshot,
-  loadTrackingSession,
-  saveTrackingSession,
+  type ActivityType,
+  type TrackingPoint,
   type TrackingSnapshot,
+  createIdleTrackingSnapshot,
 } from './sessionStore';
 
-const MIN_ROUTE_DISTANCE_METERS = 3;
-const MAX_ACCEPTABLE_ACCURACY_METERS = 120;
-const MIN_ASCENT_DELTA_METERS = 1.5;
-const MAX_ALTITUDE_ACCURACY_METERS = 35;
-const MAX_ROUTE_POINTS = 5000;
+import {
+  readTrackingSession,
+  writeTrackingSession,
+  clearTrackingSession,
+} from './storage';
 
-let currentSnapshot: TrackingSnapshot = createIdleTrackingSnapshot();
-let hasHydrated = false;
-let watchId: number | null = null;
+import {
+  ensureNotificationChannel,
+  showTrackingNotification,
+  clearTrackingNotification,
+} from './notifications';
 
-const isFiniteNumber = (value: unknown): value is number => {
+type TrackerListener = (snapshot: TrackingSnapshot) => void;
+
+type TrackerSession = {
+  watchId: number | null;
+  currentSnapshot: TrackingSnapshot;
+  listeners: Set<TrackerListener>;
+  elapsedTimer: ReturnType<typeof setInterval> | null;
+  lastPersistedAt: number;
+};
+
+const TRACKING_NOTIFICATION_ID = 'geozone-tracking-active';
+const TRACKING_CHANNEL_ID = 'geozone-tracking';
+
+const MIN_RECORD_DISTANCE_METERS = 4;
+const MAX_ALLOWED_ACCURACY_METERS = 120;
+const MAX_SEGMENT_DISTANCE_METERS = 250;
+const MIN_ASCENT_DELTA_METERS = 1;
+
+const trackerSession: TrackerSession = {
+  watchId: null,
+  currentSnapshot: createIdleTrackingSnapshot(),
+  listeners: new Set<TrackerListener>(),
+  elapsedTimer: null,
+  lastPersistedAt: 0,
+};
+
+const WATCH_OPTIONS: GeoWatchOptions = {
+  enableHighAccuracy: true,
+  distanceFilter: 3,
+  interval: 3000,
+  fastestInterval: 1500,
+  forceRequestLocation: true,
+  showLocationDialog: true,
+};
+
+const INITIAL_POSITION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 20000,
+  maximumAge: 5000,
+  forceRequestLocation: true,
+  showLocationDialog: true,
+};
+
+function isValidNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
-};
-
-const now = () => Date.now();
-
-const clampPositive = (value: number) => {
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
-};
-
-function getLiveElapsedMs(snapshot: TrackingSnapshot): number {
-  if (!snapshot.isActive || snapshot.isPaused || !snapshot.startedAt) {
-    return clampPositive(snapshot.elapsedMs);
-  }
-
-  return clampPositive(snapshot.elapsedMs + (now() - snapshot.startedAt));
 }
 
-function cloneSnapshot(snapshot: TrackingSnapshot): TrackingSnapshot {
+function toSafeNumber(value: unknown): number | null {
+  return isValidNumber(value) ? value : null;
+}
+
+function clonePoint(point: TrackingPoint): TrackingPoint {
+  return {
+    latitude: point.latitude,
+    longitude: point.longitude,
+    timestamp: point.timestamp,
+    accuracy: point.accuracy,
+    altitude: point.altitude,
+    altitudeAccuracy: point.altitudeAccuracy,
+    heading: point.heading,
+    speed: point.speed,
+  };
+}
+
+function getElapsedMs(snapshot: TrackingSnapshot, now = Date.now()) {
+  if (!snapshot.startedAt) {
+    return snapshot.elapsedMs;
+  }
+
+  if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
+    return snapshot.elapsedMs;
+  }
+
+  return snapshot.elapsedMs + Math.max(0, now - snapshot.startedAt);
+}
+
+function cloneSnapshot(
+  snapshot: TrackingSnapshot,
+  options?: {includeLiveElapsed?: boolean},
+): TrackingSnapshot {
   return {
     ...snapshot,
-    elapsedMs: getLiveElapsedMs(snapshot),
-    route: [...snapshot.route],
-    lastPoint: snapshot.lastPoint ? {...snapshot.lastPoint} : null,
-    location: snapshot.location ? {...snapshot.location} : null,
+    elapsedMs: options?.includeLiveElapsed
+      ? getElapsedMs(snapshot)
+      : snapshot.elapsedMs,
+    route: snapshot.route.map(clonePoint),
+    lastPoint: snapshot.lastPoint ? clonePoint(snapshot.lastPoint) : null,
+    location: snapshot.location ? clonePoint(snapshot.location) : null,
   };
 }
 
-async function persistSnapshot() {
-  try {
-    await saveTrackingSession(currentSnapshot);
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[tracker] No se pudo guardar la sesión:', error);
-    }
-  }
-}
-
-function stopWatch() {
-  if (watchId !== null) {
-    Geolocation.clearWatch(watchId);
-    watchId = null;
-  }
-
-  try {
-    Geolocation.stopObserving();
-  } catch {
-    // Android puede lanzar error si no hay observers activos.
-  }
-}
-
-function toTrackingPoint(position: GeoPosition): TrackingPoint | null {
-  const {coords} = position;
-
-  if (!isFiniteNumber(coords.latitude) || !isFiniteNumber(coords.longitude)) {
-    return null;
-  }
-
-  return {
-    latitude: coords.latitude,
-    longitude: coords.longitude,
-    timestamp: isFiniteNumber(position.timestamp) ? position.timestamp : now(),
-    accuracy: isFiniteNumber(coords.accuracy) ? coords.accuracy : null,
-    altitude: isFiniteNumber(coords.altitude) ? coords.altitude : null,
-    altitudeAccuracy: isFiniteNumber(coords.altitudeAccuracy)
-      ? coords.altitudeAccuracy
-      : null,
-    heading: isFiniteNumber(coords.heading) ? coords.heading : null,
-    speed: isFiniteNumber(coords.speed) ? coords.speed : null,
-  };
-}
-
-function toRadians(value: number): number {
+function toRadians(value: number) {
   return (value * Math.PI) / 180;
 }
 
-function getDistanceMeters(
-  previousPoint: TrackingPoint | null,
-  nextPoint: TrackingPoint,
-): number {
-  if (!previousPoint) {
-    return 0;
-  }
-
-  const earthRadiusMeters = 6371000;
-
-  const dLat = toRadians(nextPoint.latitude - previousPoint.latitude);
-  const dLon = toRadians(nextPoint.longitude - previousPoint.longitude);
-
-  const lat1 = toRadians(previousPoint.latitude);
-  const lat2 = toRadians(nextPoint.latitude);
+function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
+  const earthRadius = 6371000;
+  const latDelta = toRadians(to.latitude - from.latitude);
+  const lonDelta = toRadians(to.longitude - from.longitude);
+  const fromLat = toRadians(from.latitude);
+  const toLat = toRadians(to.latitude);
 
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) *
-      Math.cos(lat2) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(fromLat) *
+      Math.cos(toLat) *
+      Math.sin(lonDelta / 2) *
+      Math.sin(lonDelta / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return earthRadiusMeters * c;
+  return earthRadius * c;
 }
 
-function hasReliableAccuracy(point: TrackingPoint): boolean {
-  if (!isFiniteNumber(point.accuracy)) {
-    return true;
+function calculateAverageSpeedMps(distanceMeters: number, elapsedMs: number) {
+  if (elapsedMs <= 0) {
+    return 0;
   }
 
-  return point.accuracy <= MAX_ACCEPTABLE_ACCURACY_METERS;
+  return distanceMeters / (elapsedMs / 1000);
 }
 
-function shouldAddRoutePoint(
-  previousRoutePoint: TrackingPoint | null,
-  nextPoint: TrackingPoint,
-): boolean {
-  if (!hasReliableAccuracy(nextPoint)) {
+function getMaxReasonableSpeedMps(activityType: ActivityType) {
+  switch (activityType) {
+    case 'ride':
+      return 25;
+    case 'pet':
+      return 5.5;
+    case 'run':
+    default:
+      return 8.5;
+  }
+}
+
+function shouldUsePoint(point: TrackingPoint) {
+  if (!isValidNumber(point.latitude) || !isValidNumber(point.longitude)) {
     return false;
   }
 
-  if (!previousRoutePoint) {
+  if (
+    isValidNumber(point.accuracy) &&
+    point.accuracy > MAX_ALLOWED_ACCURACY_METERS
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldRecordMovement(
+  activityType: ActivityType,
+  previousPoint: TrackingPoint | null,
+  nextPoint: TrackingPoint,
+) {
+  if (!previousPoint) {
     return true;
   }
 
-  const distance = getDistanceMeters(previousRoutePoint, nextPoint);
-  return distance >= MIN_ROUTE_DISTANCE_METERS;
-}
+  const distanceMeters = calculateDistanceMeters(previousPoint, nextPoint);
 
-function getAltitude(point: TrackingPoint | null): number | null {
-  if (!point || !isFiniteNumber(point.altitude)) {
-    return null;
+  if (distanceMeters < MIN_RECORD_DISTANCE_METERS) {
+    return false;
   }
 
-  if (
-    isFiniteNumber(point.altitudeAccuracy) &&
-    point.altitudeAccuracy > MAX_ALTITUDE_ACCURACY_METERS
-  ) {
-    return null;
+  if (distanceMeters > MAX_SEGMENT_DISTANCE_METERS) {
+    const seconds = Math.max(
+      1,
+      Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
+    );
+
+    const segmentSpeedMps = distanceMeters / seconds;
+
+    if (segmentSpeedMps > getMaxReasonableSpeedMps(activityType)) {
+      return false;
+    }
   }
 
-  return point.altitude;
+  const previousAccuracy = isValidNumber(previousPoint.accuracy)
+    ? previousPoint.accuracy
+    : 0;
+
+  const nextAccuracy = isValidNumber(nextPoint.accuracy)
+    ? nextPoint.accuracy
+    : 0;
+
+  const worstAccuracy = Math.max(previousAccuracy, nextAccuracy);
+
+  if (worstAccuracy > 25 && distanceMeters < worstAccuracy * 0.7) {
+    return false;
+  }
+
+  const seconds = Math.max(
+    1,
+    Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
+  );
+
+  const segmentSpeedMps = distanceMeters / seconds;
+
+  return segmentSpeedMps <= getMaxReasonableSpeedMps(activityType);
 }
 
-function getAscentDelta(
+function updateAscent(
   previousPoint: TrackingPoint | null,
   nextPoint: TrackingPoint,
-): number {
-  const previousAltitude = getAltitude(previousPoint);
-  const nextAltitude = getAltitude(nextPoint);
+) {
+  if (!previousPoint) {
+    return trackerSession.currentSnapshot.ascentMeters;
+  }
+
+  const previousAltitude = toSafeNumber(previousPoint.altitude);
+  const nextAltitude = toSafeNumber(nextPoint.altitude);
 
   if (previousAltitude === null || nextAltitude === null) {
-    return 0;
+    return trackerSession.currentSnapshot.ascentMeters;
+  }
+
+  const previousAltitudeAccuracy = toSafeNumber(previousPoint.altitudeAccuracy);
+  const nextAltitudeAccuracy = toSafeNumber(nextPoint.altitudeAccuracy);
+
+  if (
+    (previousAltitudeAccuracy !== null && previousAltitudeAccuracy > 30) ||
+    (nextAltitudeAccuracy !== null && nextAltitudeAccuracy > 30)
+  ) {
+    return trackerSession.currentSnapshot.ascentMeters;
   }
 
   const delta = nextAltitude - previousAltitude;
 
-  if (delta < MIN_ASCENT_DELTA_METERS) {
-    return 0;
+  if (delta >= MIN_ASCENT_DELTA_METERS) {
+    return trackerSession.currentSnapshot.ascentMeters + delta;
   }
 
-  return delta;
+  return trackerSession.currentSnapshot.ascentMeters;
 }
 
-function getSpeedMps(
-  previousLocation: TrackingPoint | null,
-  nextPoint: TrackingPoint,
-): number {
-  if (isFiniteNumber(nextPoint.speed) && nextPoint.speed > 0) {
-    return nextPoint.speed;
-  }
+async function persistSnapshot(force = false) {
+  const now = Date.now();
 
-  if (!previousLocation) {
-    return 0;
-  }
-
-  const distanceMeters = getDistanceMeters(previousLocation, nextPoint);
-  const deltaSeconds = Math.max(
-    0,
-    (nextPoint.timestamp - previousLocation.timestamp) / 1000,
-  );
-
-  if (deltaSeconds <= 0) {
-    return 0;
-  }
-
-  return distanceMeters / deltaSeconds;
-}
-
-function trimRoute(route: TrackingPoint[]): TrackingPoint[] {
-  if (route.length <= MAX_ROUTE_POINTS) {
-    return route;
-  }
-
-  return route.slice(route.length - MAX_ROUTE_POINTS);
-}
-
-function handlePosition(position: GeoPosition) {
-  const nextPoint = toTrackingPoint(position);
-
-  if (!nextPoint) {
+  if (!force && now - trackerSession.lastPersistedAt < 1200) {
     return;
   }
 
-  if (
-    !currentSnapshot.isActive ||
-    currentSnapshot.isPaused ||
-    currentSnapshot.isFinished
-  ) {
+  try {
+    const snapshotToPersist = cloneSnapshot(trackerSession.currentSnapshot, {
+      includeLiveElapsed: false,
+    });
+
+    await writeTrackingSession(snapshotToPersist);
+    trackerSession.lastPersistedAt = now;
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[tracker] persistSnapshot error', error);
+    }
+  }
+}
+
+async function refreshNotification(snapshot: TrackingSnapshot) {
+  try {
+    if (!snapshot.isActive || snapshot.isFinished) {
+      await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+      return;
+    }
+
+    await ensureNotificationChannel(TRACKING_CHANNEL_ID);
+
+    await showTrackingNotification({
+      notificationId: TRACKING_NOTIFICATION_ID,
+      channelId: TRACKING_CHANNEL_ID,
+      activityType: snapshot.activityType,
+      elapsedMs: getElapsedMs(snapshot),
+      distanceMeters: snapshot.distanceMeters,
+      speedMps: snapshot.speedMps,
+      ascentMeters: snapshot.ascentMeters,
+      isPaused: snapshot.isPaused,
+    });
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[tracker] refreshNotification error', error);
+    }
+  }
+}
+
+function emitSnapshot() {
+  const cloned = cloneSnapshot(trackerSession.currentSnapshot, {
+    includeLiveElapsed: true,
+  });
+
+  trackerSession.listeners.forEach(listener => {
+    listener(cloned);
+  });
+}
+
+function stopElapsedTick() {
+  if (trackerSession.elapsedTimer) {
+    clearInterval(trackerSession.elapsedTimer);
+    trackerSession.elapsedTimer = null;
+  }
+}
+
+function scheduleElapsedTick() {
+  stopElapsedTick();
+
+  const snapshot = trackerSession.currentSnapshot;
+
+  if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
     return;
   }
 
-  const previousLocation = currentSnapshot.location;
-  const previousRoutePoint = currentSnapshot.lastPoint;
-  const addToRoute = shouldAddRoutePoint(previousRoutePoint, nextPoint);
-
-  const nextSpeedMps = getSpeedMps(previousLocation, nextPoint);
-  const nextAltitudeMeters =
-    getAltitude(nextPoint) ?? currentSnapshot.altitudeMeters ?? null;
-
-  let nextDistanceMeters = currentSnapshot.distanceMeters;
-  let nextAscentMeters = currentSnapshot.ascentMeters;
-  let nextLastPoint = currentSnapshot.lastPoint;
-  let nextRoute = currentSnapshot.route;
-
-  if (addToRoute) {
-    const segmentDistance = getDistanceMeters(previousRoutePoint, nextPoint);
-
-    nextDistanceMeters += segmentDistance;
-    nextAscentMeters += getAscentDelta(previousRoutePoint, nextPoint);
-    nextLastPoint = nextPoint;
-    nextRoute = trimRoute([...currentSnapshot.route, nextPoint]);
-  }
-
-  currentSnapshot = {
-    ...currentSnapshot,
-    distanceMeters: clampPositive(nextDistanceMeters),
-    speedMps: clampPositive(nextSpeedMps),
-    ascentMeters: clampPositive(nextAscentMeters),
-    altitudeMeters: nextAltitudeMeters,
-    hasLocation: true,
-    errorCode: null,
-    lastPoint: nextLastPoint,
-    location: nextPoint,
-    route: nextRoute,
-    lastUpdatedAt: now(),
-  };
-
-  void persistSnapshot();
+  trackerSession.elapsedTimer = setInterval(() => {
+    emitSnapshot();
+    void refreshNotification(trackerSession.currentSnapshot);
+  }, 1000);
 }
 
-function handleLocationError(error: GeoError) {
-  currentSnapshot = {
-    ...currentSnapshot,
-    errorCode: String(error.code),
-    lastUpdatedAt: now(),
+async function notifySnapshotChanged(forcePersist = false) {
+  emitSnapshot();
+  await persistSnapshot(forcePersist);
+  await refreshNotification(trackerSession.currentSnapshot);
+}
+
+function createPointFromPosition(position: GeoPosition): TrackingPoint {
+  const timestamp = Number(position.timestamp ?? Date.now());
+
+  return {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+    accuracy: toSafeNumber(position.coords.accuracy),
+    altitude: toSafeNumber(position.coords.altitude),
+    altitudeAccuracy: toSafeNumber(position.coords.altitudeAccuracy),
+    heading: toSafeNumber(position.coords.heading),
+    speed: toSafeNumber(position.coords.speed),
+  };
+}
+
+function stopWatchingPosition() {
+  if (trackerSession.watchId !== null) {
+    Geolocation.clearWatch(trackerSession.watchId);
+    trackerSession.watchId = null;
+  }
+
+  Geolocation.stopObserving();
+}
+
+function handleWatchError(error?: GeoError) {
+  trackerSession.currentSnapshot = {
+    ...trackerSession.currentSnapshot,
+    errorCode: error?.code ? String(error.code) : 'LOCATION_ERROR',
+    lastUpdatedAt: Date.now(),
   };
 
-  void persistSnapshot();
+  emitSnapshot();
 
   if (__DEV__) {
-    console.warn('[tracker] Error GPS:', error.code, error.message);
+    console.warn('[tracker] watchPosition error', error);
   }
 }
 
-function startWatch() {
-  stopWatch();
+function startWatchingPosition() {
+  stopWatchingPosition();
 
-  const commonOptions = {
-    enableHighAccuracy: true,
-    timeout: 20000,
-    maximumAge: 1000,
-    distanceFilter: 1,
-    showLocationDialog: true,
-    forceRequestLocation: true,
-  };
+  Geolocation.getCurrentPosition(
+    position => {
+      void upsertPosition(position);
+    },
+    error => {
+      handleWatchError(error);
+    },
+    INITIAL_POSITION_OPTIONS,
+  );
 
-  Geolocation.getCurrentPosition(handlePosition, handleLocationError, {
-    ...commonOptions,
-    timeout: 15000,
-  });
-
-  watchId = Geolocation.watchPosition(handlePosition, handleLocationError, {
-    ...commonOptions,
-    interval: 2000,
-    fastestInterval: 1000,
-    useSignificantChanges: false,
-    showsBackgroundLocationIndicator: Platform.OS === 'ios',
-  });
+  trackerSession.watchId = Geolocation.watchPosition(
+    position => {
+      void upsertPosition(position);
+    },
+    error => {
+      handleWatchError(error);
+    },
+    WATCH_OPTIONS,
+  );
 }
 
-export async function hydrateTrackerFromStorage() {
-  if (hasHydrated) {
-    return;
-  }
+export async function startTracker(activityType: ActivityType) {
+  const now = Date.now();
 
-  const storedSnapshot = await loadTrackingSession();
-
-  if (storedSnapshot) {
-    currentSnapshot = storedSnapshot;
-  } else {
-    currentSnapshot = createIdleTrackingSnapshot();
-  }
-
-  hasHydrated = true;
-
-  if (
-    currentSnapshot.isActive &&
-    !currentSnapshot.isPaused &&
-    !currentSnapshot.isFinished
-  ) {
-    startWatch();
-  }
-}
-
-export async function startTracker(activityType: ActivityType = 'run') {
-  await hydrateTrackerFromStorage();
-
-  const startedAt = now();
-
-  currentSnapshot = {
+  trackerSession.currentSnapshot = {
     ...createIdleTrackingSnapshot(activityType),
     isActive: true,
     isPaused: false,
     isFinished: false,
-    startedAt,
+    startedAt: now,
     pausedAt: null,
     finishedAt: null,
-    lastUpdatedAt: startedAt,
-    elapsedMs: 0,
-    totalPausedMs: 0,
+    lastUpdatedAt: now,
+    activityType,
     errorCode: null,
   };
 
-  await persistSnapshot();
-  startWatch();
+  trackerSession.lastPersistedAt = 0;
 
-  return getTrackerSnapshot();
+  scheduleElapsedTick();
+  startWatchingPosition();
+
+  await notifySnapshotChanged(true);
 }
 
 export async function pauseTracker() {
-  await hydrateTrackerFromStorage();
+  const snapshot = trackerSession.currentSnapshot;
 
-  if (
-    !currentSnapshot.isActive ||
-    currentSnapshot.isPaused ||
-    currentSnapshot.isFinished
-  ) {
-    return getTrackerSnapshot();
+  if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
+    return;
   }
 
-  const pausedAt = now();
-  const elapsedMs = getLiveElapsedMs(currentSnapshot);
-
-  stopWatch();
-
-  currentSnapshot = {
-    ...currentSnapshot,
+  trackerSession.currentSnapshot = {
+    ...snapshot,
     isPaused: true,
-    pausedAt,
+    pausedAt: Date.now(),
+    elapsedMs: getElapsedMs(snapshot),
     startedAt: null,
-    elapsedMs,
     speedMps: 0,
-    lastUpdatedAt: pausedAt,
+    lastUpdatedAt: Date.now(),
   };
 
-  await persistSnapshot();
+  stopWatchingPosition();
+  stopElapsedTick();
 
-  return getTrackerSnapshot();
+  await notifySnapshotChanged(true);
 }
 
 export async function resumeTracker() {
-  await hydrateTrackerFromStorage();
+  const snapshot = trackerSession.currentSnapshot;
 
-  if (
-    !currentSnapshot.isActive ||
-    !currentSnapshot.isPaused ||
-    currentSnapshot.isFinished
-  ) {
-    return getTrackerSnapshot();
+  if (!snapshot.isActive || !snapshot.isPaused || snapshot.isFinished) {
+    return;
   }
 
-  const resumedAt = now();
-  const pausedAt = currentSnapshot.pausedAt ?? resumedAt;
-  const pausedDeltaMs = Math.max(0, resumedAt - pausedAt);
-
-  currentSnapshot = {
-    ...currentSnapshot,
+  trackerSession.currentSnapshot = {
+    ...snapshot,
     isPaused: false,
     pausedAt: null,
-    startedAt: resumedAt,
-    totalPausedMs: currentSnapshot.totalPausedMs + pausedDeltaMs,
-    lastUpdatedAt: resumedAt,
+    startedAt: Date.now(),
+    lastUpdatedAt: Date.now(),
     errorCode: null,
   };
 
-  await persistSnapshot();
-  startWatch();
+  scheduleElapsedTick();
+  startWatchingPosition();
 
-  return getTrackerSnapshot();
+  await notifySnapshotChanged(true);
 }
 
 export async function finishTracker() {
-  await hydrateTrackerFromStorage();
+  const snapshot = trackerSession.currentSnapshot;
 
-  const finishedAt = now();
-  const elapsedMs = getLiveElapsedMs(currentSnapshot);
+  if (!snapshot.isActive || snapshot.isFinished) {
+    return;
+  }
 
-  stopWatch();
-
-  currentSnapshot = {
-    ...currentSnapshot,
+  trackerSession.currentSnapshot = {
+    ...snapshot,
     isActive: false,
     isPaused: false,
     isFinished: true,
+    finishedAt: Date.now(),
+    elapsedMs: getElapsedMs(snapshot),
     startedAt: null,
     pausedAt: null,
-    finishedAt,
-    elapsedMs,
     speedMps: 0,
-    lastUpdatedAt: finishedAt,
+    lastUpdatedAt: Date.now(),
   };
 
-  await persistSnapshot();
+  stopWatchingPosition();
+  stopElapsedTick();
 
-  return getTrackerSnapshot();
+  await notifySnapshotChanged(true);
 }
 
-export function getTrackerSnapshot(): TrackingSnapshot {
-  return cloneSnapshot(currentSnapshot);
+export async function resetTracker(activityType: ActivityType = 'run') {
+  stopWatchingPosition();
+  stopElapsedTick();
+
+  trackerSession.currentSnapshot = createIdleTrackingSnapshot(activityType);
+  trackerSession.lastPersistedAt = 0;
+
+  await clearTrackingSession();
+  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
+  emitSnapshot();
 }
 
-export async function clearTrackerRuntime() {
-  stopWatch();
-  currentSnapshot = createIdleTrackingSnapshot();
-  await persistSnapshot();
+export async function upsertPosition(position: GeoPosition) {
+  const snapshot = trackerSession.currentSnapshot;
+
+  if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
+    return;
+  }
+
+  const point = createPointFromPosition(position);
+
+  if (!shouldUsePoint(point)) {
+    return;
+  }
+
+  const previousAnchorPoint = snapshot.lastPoint;
+  const shouldRecord = shouldRecordMovement(
+    snapshot.activityType,
+    previousAnchorPoint,
+    point,
+  );
+
+  let nextDistance = snapshot.distanceMeters;
+  let nextAscent = snapshot.ascentMeters;
+  let nextRoute = snapshot.route;
+  let nextLastPoint = snapshot.lastPoint;
+
+  if (shouldRecord) {
+    if (previousAnchorPoint) {
+      nextDistance += calculateDistanceMeters(previousAnchorPoint, point);
+      nextAscent = updateAscent(previousAnchorPoint, point);
+    }
+
+    nextRoute = [...snapshot.route, point];
+    nextLastPoint = point;
+  }
+
+  const liveElapsedMs = getElapsedMs(snapshot);
+
+  const nextSpeedMps =
+    toSafeNumber(point.speed) !== null && Number(point.speed) > 0
+      ? Number(point.speed)
+      : calculateAverageSpeedMps(nextDistance, liveElapsedMs);
+
+  trackerSession.currentSnapshot = {
+    ...snapshot,
+    route: nextRoute,
+    lastPoint: nextLastPoint,
+    location: point,
+    hasLocation: true,
+    altitudeMeters: toSafeNumber(point.altitude),
+    errorCode: null,
+    distanceMeters: nextDistance,
+    ascentMeters: nextAscent,
+    speedMps: nextSpeedMps,
+    lastUpdatedAt: Date.now(),
+  };
+
+  await notifySnapshotChanged();
+}
+
+export function getTrackerSnapshot() {
+  return cloneSnapshot(trackerSession.currentSnapshot, {
+    includeLiveElapsed: true,
+  });
+}
+
+export async function hydrateTrackerFromStorage() {
+  const stored = await readTrackingSession();
+
+  if (!stored) {
+    trackerSession.currentSnapshot = createIdleTrackingSnapshot();
+    emitSnapshot();
+    return;
+  }
+
+  trackerSession.currentSnapshot = stored;
+
+  scheduleElapsedTick();
+  emitSnapshot();
+
+  if (stored.isActive && !stored.isPaused && !stored.isFinished) {
+    startWatchingPosition();
+    await refreshNotification(stored);
+  }
+}
+
+export function subscribeTracker(listener: TrackerListener) {
+  trackerSession.listeners.add(listener);
+  listener(
+    cloneSnapshot(trackerSession.currentSnapshot, {
+      includeLiveElapsed: true,
+    }),
+  );
+
+  return () => {
+    trackerSession.listeners.delete(listener);
+  };
 }
