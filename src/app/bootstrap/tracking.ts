@@ -1,4 +1,4 @@
-import {hydrateTrackerFromStorage} from '../../services/location/tracker';
+import {getNativeTrackingSnapshot} from '../../services/location';
 
 let hasBootstrappedTracking = false;
 
@@ -8,7 +8,7 @@ export async function bootstrapTracking() {
   }
 
   try {
-    await hydrateTrackerFromStorage();
+    await getNativeTrackingSnapshot();
     hasBootstrappedTracking = true;
   } catch (error) {
     console.warn('No se pudo inicializar tracking', error);
