@@ -1,72 +1,62 @@
-export const BODY_TYPES = ['male', 'female'] as const;
-export type AvatarBodyType = (typeof BODY_TYPES)[number];
+export type AvatarBodyType = 'masculine' | 'feminine';
 
-export const ACCESSORY_TYPES = ['none', 'jockey', 'cat_ears'] as const;
-export type AvatarAccessoryType = (typeof ACCESSORY_TYPES)[number];
+export type AvatarFacing = 'front' | 'profile' | 'back';
 
-export const TOP_TYPES = ['tshirt', 'hoodie'] as const;
-export type AvatarTopType = (typeof TOP_TYPES)[number];
+export type AvatarCategory =
+  | 'hair'
+  | 'face'
+  | 'top'
+  | 'bottom'
+  | 'shoes'
+  | 'accessories';
 
-export const BOTTOM_TYPES = ['pants', 'shorts'] as const;
-export type AvatarBottomType = (typeof BOTTOM_TYPES)[number];
-
-export const AVATAR_COLOR_KEYS = [
-  'black',
-  'white',
-  'gray',
-  'red',
-  'blue',
-  'cyan',
-  'green',
-  'yellow',
-  'orange',
-  'purple',
-  'pink',
-] as const;
-export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number];
+export type AvatarOption = {
+  id: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  locked?: boolean;
+  bodyTypes?: AvatarBodyType[];
+};
 
 export type AvatarConfig = {
   bodyType: AvatarBodyType;
-  accessory: AvatarAccessoryType;
-  top: AvatarTopType;
-  bottom: AvatarBottomType;
-  topColor: AvatarColorKey;
-  bottomColor: AvatarColorKey;
-  accessoryColor: AvatarColorKey;
+  skinTone: string;
+
+  hairStyle: string;
+  hairColor: string;
+
+  topStyle: string;
+  topColor: string;
+
+  bottomStyle: string;
+  bottomColor: string;
+
+  shoeStyle: string;
+  shoeColor: string;
+
+  accessory: string;
+  accessoryColor: string;
 };
-
-export type AvatarOption<T extends string> = {
-  label: string;
-  value: T;
-};
-
-export const BODY_TYPE_OPTIONS: AvatarOption<AvatarBodyType>[] = [
-  {label: 'Hombre', value: 'male'},
-  {label: 'Mujer', value: 'female'},
-];
-
-export const ACCESSORY_OPTIONS: AvatarOption<AvatarAccessoryType>[] = [
-  {label: 'Sin accesorio', value: 'none'},
-  {label: 'Jockey', value: 'jockey'},
-  {label: 'Orejas de gato', value: 'cat_ears'},
-];
-
-export const TOP_OPTIONS: AvatarOption<AvatarTopType>[] = [
-  {label: 'Polera', value: 'tshirt'},
-  {label: 'Polerón', value: 'hoodie'},
-];
-
-export const BOTTOM_OPTIONS: AvatarOption<AvatarBottomType>[] = [
-  {label: 'Pantalón', value: 'pants'},
-  {label: 'Short', value: 'shorts'},
-];
 
 export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
-  bodyType: 'male',
+  bodyType: 'masculine',
+  skinTone: '#F2B68B',
+
+  hairStyle: 'spiky',
+  hairColor: '#F5C84B',
+
+  topStyle: 'shirt',
+  topColor: '#00C2D7',
+
+  bottomStyle: 'pants',
+  bottomColor: '#3A6EA5',
+
+  shoeStyle: 'sneakers',
+  shoeColor: '#F7F7F7',
+
   accessory: 'none',
-  top: 'hoodie',
-  bottom: 'pants',
-  topColor: 'orange',
-  bottomColor: 'black',
-  accessoryColor: 'white',
+  accessoryColor: '#FFB703',
 };
+
+export const defaultAvatarConfig = DEFAULT_AVATAR_CONFIG;
