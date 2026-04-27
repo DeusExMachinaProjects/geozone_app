@@ -1,5 +1,6 @@
 import {Alert, AppState} from 'react-native';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+
 import {
   getNativeTrackingSnapshot,
   openNativeLocationSettings,
@@ -9,7 +10,9 @@ import {
   stopNativeTracking,
   type ActivityTrackingSnapshot,
 } from '../../../services/location';
+
 import type {ActivityType, TrackingPoint} from '../../tracking/types';
+
 import {
   formatAscentMeters,
   formatDistanceKm,
@@ -19,7 +22,7 @@ import {
 
 type UseActivityTrackingOptions = {
   activityType: ActivityType;
-  onClose: () => void;
+  onClose?: () => void;
 };
 
 type TrackingUiStatus = 'idle' | 'preparing' | 'running' | 'paused' | 'finished';
@@ -73,6 +76,7 @@ const EMPTY_SNAPSHOT: ActivityTrackingSnapshot = {
   currentAltitudeMeters: null,
   route: [],
   lastLocation: null,
+  errorCode: null,
 };
 
 function normalizeSnapshot(
@@ -89,6 +93,7 @@ function normalizeSnapshot(
     currentAltitudeMeters: snapshot?.currentAltitudeMeters ?? null,
     route: Array.isArray(snapshot?.route) ? snapshot.route : [],
     lastLocation: snapshot?.lastLocation ?? null,
+    errorCode: snapshot?.errorCode ?? null,
   };
 }
 
@@ -111,6 +116,10 @@ function mapUiStatus(
 
   if (nativeStatus === 'tracking') {
     return 'running';
+  }
+
+  if (nativeStatus === 'finished') {
+    return 'finished';
   }
 
   return 'idle';
@@ -172,7 +181,9 @@ export function useActivityTracking({
       const current = await getNativeTrackingSnapshot();
       hydrateSnapshot(current);
     } catch (error) {
-      console.warn('No se pudo refrescar el snapshot de tracking', error);
+      if (__DEV__) {
+        console.warn('No se pudo refrescar el snapshot de tracking', error);
+      }
     }
   }, [hydrateSnapshot]);
 
@@ -181,9 +192,7 @@ export function useActivityTracking({
     setErrorMessage(null);
 
     try {
-      const currentSnapshot = normalizeSnapshot(
-        await getNativeTrackingSnapshot(),
-      );
+      const currentSnapshot = normalizeSnapshot(await getNativeTrackingSnapshot());
 
       const alreadyActive =
         currentSnapshot.status === 'tracking' ||
@@ -194,22 +203,22 @@ export function useActivityTracking({
         return;
       }
 
-      const started = await startNativeTracking(activityType);
+      const startedSnapshot = await startNativeTracking(activityType);
 
-      if (!started) {
+      if (!startedSnapshot) {
         const message =
           'No se pudieron obtener los permisos necesarios de ubicación.';
         setErrorMessage(message);
         return;
       }
 
-      const startedSnapshot = await getNativeTrackingSnapshot();
       hydrateSnapshot(startedSnapshot);
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'No se pudo iniciar el seguimiento.';
+
       setErrorMessage(message);
       Alert.alert('Seguimiento', message);
     } finally {
@@ -224,7 +233,9 @@ export function useActivityTracking({
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextState => {
       const wasInBackground =
-        appStateRef.current === 'background' || appStateRef.current === 'inactive';
+        appStateRef.current === 'background' ||
+        appStateRef.current === 'inactive';
+
       const isNowActive = nextState === 'active';
 
       if (wasInBackground && isNowActive) {
@@ -246,7 +257,7 @@ export function useActivityTracking({
 
     const interval = setInterval(() => {
       void refresh();
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [refresh, summaryVisible]);
@@ -269,6 +280,7 @@ export function useActivityTracking({
         error instanceof Error
           ? error.message
           : 'No se pudo cambiar el estado de la actividad.';
+
       setErrorMessage(message);
       Alert.alert('Actividad', message);
     }
@@ -292,6 +304,7 @@ export function useActivityTracking({
         error instanceof Error
           ? error.message
           : 'No se pudo finalizar la actividad.';
+
       setErrorMessage(message);
       Alert.alert('Actividad', message);
     }
@@ -309,12 +322,13 @@ export function useActivityTracking({
     try {
       setExitModalVisible(false);
       await stopNativeTracking();
-      onClose();
+      onClose?.();
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'No se pudo salir de la actividad.';
+
       setErrorMessage(message);
       Alert.alert('Actividad', message);
     }
@@ -325,7 +339,7 @@ export function useActivityTracking({
   }, []);
 
   const openLocationSettings = useCallback(() => {
-    void openNativeLocationSettings();
+    openNativeLocationSettings();
   }, []);
 
   const status = useMemo(

@@ -1,6 +1,7 @@
-import React, {useMemo, useRef} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {StyleSheet, View} from 'react-native';
 import {WebView} from 'react-native-webview';
+
 import {buildTrackingMapHtml, type TrackingMapPayload} from './TrackingMapHtml';
 
 type TrackingMapPoint = {
@@ -21,7 +22,16 @@ export function TrackingMap({
 }: TrackingMapProps) {
   const webViewRef = useRef<WebView>(null);
 
-  const payload = useMemo<TrackingMapPayload>(
+  const initialPayload = useMemo<TrackingMapPayload>(
+    () => ({
+      route: [],
+      currentLocation: null,
+      activityType,
+    }),
+    [activityType],
+  );
+
+  const livePayload = useMemo<TrackingMapPayload>(
     () => ({
       route,
       currentLocation,
@@ -30,38 +40,47 @@ export function TrackingMap({
     [activityType, currentLocation, route],
   );
 
-  const html = useMemo(() => buildTrackingMapHtml(payload), [payload]);
+  const html = useMemo(
+    () => buildTrackingMapHtml(initialPayload),
+    [initialPayload],
+  );
 
-  const injectedJavaScript = useMemo(() => {
-    const serialized = JSON.stringify(payload);
-    return `
+  const serializedPayload = useMemo(
+    () => JSON.stringify(livePayload).replace(/</g, '\\u003c'),
+    [livePayload],
+  );
+
+  const injectPayload = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
       if (window.__updateTracking) {
-        window.__updateTracking(${serialized});
+        window.__updateTracking(${serializedPayload});
       }
       true;
-    `;
-  }, [payload]);
+    `);
+  }, [serializedPayload]);
+
+  useEffect(() => {
+    injectPayload();
+  }, [injectPayload]);
 
   return (
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
+        source={{
+          html,
+          baseUrl: 'https://tiles.openfreemap.org/',
+        }}
         originWhitelist={['*']}
-        source={{html}}
-        style={styles.webview}
         javaScriptEnabled
         domStorageEnabled
-        cacheEnabled={false}
-        injectedJavaScript={injectedJavaScript}
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        setSupportMultipleWindows={false}
-        nestedScrollEnabled={false}
-        overScrollMode="never"
         scrollEnabled={false}
         bounces={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        mixedContentMode="always"
+        setSupportMultipleWindows={false}
+        onLoadEnd={injectPayload}
+        style={styles.webview}
       />
     </View>
   );
