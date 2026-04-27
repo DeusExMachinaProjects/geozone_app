@@ -1,13 +1,12 @@
-import React, {useCallback, useEffect, useMemo, useRef} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {StyleSheet, View} from 'react-native';
 import {WebView} from 'react-native-webview';
 
-import {buildTrackingMapHtml, type TrackingMapPayload} from './TrackingMapHtml';
-
-type TrackingMapPoint = {
-  latitude: number;
-  longitude: number;
-};
+import {
+  buildTrackingMapHtml,
+  type TrackingMapPayload,
+  type TrackingMapPoint,
+} from './TrackingMapHtml';
 
 type TrackingMapProps = {
   route: TrackingMapPoint[];
@@ -15,72 +14,88 @@ type TrackingMapProps = {
   activityType?: 'run' | 'ride' | 'pet';
 };
 
+function buildInjectedUpdate(payload: TrackingMapPayload) {
+  const serializedPayload = JSON.stringify(payload)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+
+  return `
+    if (window.__updateTracking) {
+      window.__updateTracking(${serializedPayload});
+    }
+    true;
+  `;
+}
+
 export function TrackingMap({
   route,
   currentLocation,
   activityType = 'run',
 }: TrackingMapProps) {
   const webViewRef = useRef<WebView>(null);
+  const latestPayloadRef = useRef<TrackingMapPayload>({
+    activityType,
+    route,
+    currentLocation,
+  });
 
-  const initialPayload = useMemo<TrackingMapPayload>(
+  const [isWebViewReady, setIsWebViewReady] = useState(false);
+
+  const initialHtmlRef = useRef<string | null>(null);
+
+  const payload = useMemo<TrackingMapPayload>(
     () => ({
-      route: [],
-      currentLocation: null,
       activityType,
-    }),
-    [activityType],
-  );
-
-  const livePayload = useMemo<TrackingMapPayload>(
-    () => ({
-      route,
+      route: Array.isArray(route) ? route : [],
       currentLocation,
-      activityType,
     }),
     [activityType, currentLocation, route],
   );
 
-  const html = useMemo(
-    () => buildTrackingMapHtml(initialPayload),
-    [initialPayload],
-  );
+  latestPayloadRef.current = payload;
 
-  const serializedPayload = useMemo(
-    () => JSON.stringify(livePayload).replace(/</g, '\\u003c'),
-    [livePayload],
-  );
+  if (!initialHtmlRef.current) {
+    initialHtmlRef.current = buildTrackingMapHtml(payload);
+  }
 
-  const injectPayload = useCallback(() => {
-    webViewRef.current?.injectJavaScript(`
-      if (window.__updateTracking) {
-        window.__updateTracking(${serializedPayload});
-      }
-      true;
-    `);
-  }, [serializedPayload]);
+  const injectPayload = useCallback((nextPayload: TrackingMapPayload) => {
+    webViewRef.current?.injectJavaScript(buildInjectedUpdate(nextPayload));
+  }, []);
+
+  const handleLoadEnd = useCallback(() => {
+    setIsWebViewReady(true);
+    injectPayload(latestPayloadRef.current);
+  }, [injectPayload]);
 
   useEffect(() => {
-    injectPayload();
-  }, [injectPayload]);
+    if (!isWebViewReady) {
+      return;
+    }
+
+    injectPayload(payload);
+  }, [injectPayload, isWebViewReady, payload]);
 
   return (
     <View style={styles.container}>
       <WebView
+        key={activityType}
         ref={webViewRef}
-        source={{
-          html,
-          baseUrl: 'https://tiles.openfreemap.org/',
-        }}
+        source={{html: initialHtmlRef.current}}
+        style={styles.webview}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
         scrollEnabled={false}
         bounces={false}
-        overScrollMode="never"
-        mixedContentMode="always"
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustContentInsets={false}
         setSupportMultipleWindows={false}
-        onLoadEnd={injectPayload}
-        style={styles.webview}
+        mixedContentMode="always"
+        androidLayerType="hardware"
+        overScrollMode="never"
+        onLoadEnd={handleLoadEnd}
       />
     </View>
   );
@@ -95,6 +110,6 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: '#ebe9e1',
   },
 });
