@@ -2,6 +2,7 @@ import notifee, {
   AndroidImportance,
   AndroidVisibility,
 } from '@notifee/react-native';
+
 import type {ActivityType} from './sessionStore';
 
 export type TrackingNotificationPayload = {
@@ -20,7 +21,6 @@ const DEFAULT_TRACKING_NOTIFICATION_ID = 'geozone-tracking-active';
 
 function formatDistance(distanceMeters: number): string {
   const safe = Number.isFinite(distanceMeters) ? Math.max(0, distanceMeters) : 0;
-
   return safe >= 1000
     ? `${(safe / 1000).toFixed(2)} km`
     : `${Math.round(safe)} m`;
@@ -96,7 +96,6 @@ export async function showTrackingNotification(
     body,
     android: {
       channelId,
-      asForegroundService: true,
       ongoing: true,
       autoCancel: false,
       onlyAlertOnce: true,
@@ -114,10 +113,6 @@ export async function showTrackingNotification(
 export async function clearTrackingNotification(
   notificationId: string = DEFAULT_TRACKING_NOTIFICATION_ID,
 ): Promise<void> {
-  try {
-    await notifee.stopForegroundService();
-  } catch {}
-
   try {
     await notifee.cancelDisplayedNotification(notificationId);
   } catch {}

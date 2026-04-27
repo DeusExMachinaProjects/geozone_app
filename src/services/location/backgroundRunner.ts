@@ -42,12 +42,6 @@ const isRunnerActive = () => {
   }
 };
 
-/**
- * Esta tarea NO calcula GPS.
- * Solo mantiene vivo el Foreground Service de Android.
- *
- * El GPS debe arrancarse desde tracker.ts con startTracker().
- */
 const keepAliveTask = async (taskData?: BackgroundTaskData) => {
   const delayMs =
     typeof taskData?.delayMs === 'number' && taskData.delayMs > 0
@@ -66,18 +60,14 @@ const getStatusDescription = (
   switch (status) {
     case 'starting':
       return 'Preparando seguimiento en segundo plano';
-
     case 'paused':
       return 'Seguimiento pausado';
-
     case 'resumed':
     case 'active':
       return 'Seguimiento activo en segundo plano';
-
     case 'stopped':
     case 'finished':
       return 'Seguimiento finalizado';
-
     default:
       return `Seguimiento activo · ${activityType}`;
   }
@@ -107,10 +97,6 @@ export async function startTrackingBackgroundRunner(
   }
 
   try {
-    /**
-     * Algunas versiones de react-native-background-actions no tipan bien
-     * foregroundServiceType, aunque Android sí lo necesita para location.
-     */
     await BackgroundService.start(keepAliveTask, options as any);
 
     await BackgroundService.updateNotification(
@@ -126,15 +112,6 @@ export async function startTrackingBackgroundRunner(
   }
 }
 
-/**
- * Compatible con ambas formas:
- *
- * 1) setTrackingBackgroundStatus(activityType, description)
- *    ejemplo: setTrackingBackgroundStatus('run', 'GPS activo')
- *
- * 2) setTrackingBackgroundStatus(status, activityType)
- *    ejemplo: setTrackingBackgroundStatus('paused', 'run')
- */
 export async function setTrackingBackgroundStatus(
   firstArg: ActivityType | BackgroundTrackingStatus,
   secondArg?: string | ActivityType,
@@ -148,7 +125,6 @@ export async function setTrackingBackgroundStatus(
 
   if (isActivityType(firstArg)) {
     activityType = firstArg;
-
     description =
       typeof secondArg === 'string' && secondArg.trim().length > 0
         ? secondArg
