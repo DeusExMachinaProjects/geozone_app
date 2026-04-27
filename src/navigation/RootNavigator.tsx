@@ -2,6 +2,7 @@ import React from 'react';
 import {NavigationContainer, DefaultTheme} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {RootStackParamList} from './types';
+
 import {SplashScreen} from '../screens/SplashScreen';
 import {OnboardingScreen} from '../screens/OnboardingScreen';
 import {AuthScreen} from '../screens/AuthScreen';
@@ -10,14 +11,15 @@ import {RunScreen} from '../screens/RunScreen';
 import {RideScreen} from '../screens/RideScreen';
 import {OptionsScreen} from '../screens/OptionsScreen';
 import {MissionsScreen} from '../screens/MissionsScreen';
-import {AppTabs} from './AppTabs';
-import {colors} from '../theme';
 import {RunTrackingScreen} from '../screens/RunTrackingScreen';
 import {RideTrackingScreen} from '../screens/RideTrackingScreen';
 import {PetTrackingScreen} from '../screens/PetTrackingScreen';
 import {PetScreen} from '../screens/PetScreen';
+import AvatarScreen from '../screens/AvatarScreen';
+
+import {AppTabs} from './AppTabs';
+import {colors} from '../theme';
 import {useAuth} from '../app/providers/AuthProvider';
-import {AvatarScreen} from '../screens/AvatarScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -48,10 +50,14 @@ export function RootNavigator() {
         ) : status === 'authenticated' ? (
           <>
             <Stack.Screen name="MainTabs" component={AppTabs} />
+
             <Stack.Screen name="Run" component={RunScreen} />
             <Stack.Screen name="Ride" component={RideScreen} />
             <Stack.Screen name="Options" component={OptionsScreen} />
             <Stack.Screen name="Missions" component={MissionsScreen} />
+            <Stack.Screen name="Pet" component={PetScreen} />
+            <Stack.Screen name="Avatar" component={AvatarScreen} />
+
             <Stack.Screen
               name="RunTracking"
               component={RunTrackingScreen}
@@ -66,18 +72,6 @@ export function RootNavigator() {
               name="PetTracking"
               component={PetTrackingScreen}
               options={{headerShown: false}}
-            />
-            <Stack.Screen
-              name="Pet"
-              component={PetScreen}
-              options={{headerShown: false}}
-            />
-            <Stack.Screen
-              name="Avatar"
-              component={AvatarScreen}
-              options={{
-                headerShown: false,
-              }}
             />
           </>
         ) : (
