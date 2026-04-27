@@ -1,18 +1,22 @@
 import Geolocation, {
+  type GeoError,
   type GeoPosition,
   type GeoWatchOptions,
 } from 'react-native-geolocation-service';
+
 import {
   type ActivityType,
   type TrackingPoint,
   type TrackingSnapshot,
   createIdleTrackingSnapshot,
 } from './sessionStore';
+
 import {
   readTrackingSession,
   writeTrackingSession,
   clearTrackingSession,
 } from './storage';
+
 import {
   ensureNotificationChannel,
   showTrackingNotification,
@@ -35,7 +39,7 @@ const TRACKING_CHANNEL_ID = 'geozone-tracking';
 const trackerSession: TrackerSession = {
   watchId: null,
   currentSnapshot: createIdleTrackingSnapshot(),
-  listeners: new Set(),
+  listeners: new Set<TrackerListener>(),
   elapsedTimer: null,
   lastPersistedAt: 0,
 };
@@ -45,6 +49,14 @@ const WATCH_OPTIONS: GeoWatchOptions = {
   distanceFilter: 5,
   interval: 4000,
   fastestInterval: 2000,
+  forceRequestLocation: true,
+  showLocationDialog: true,
+};
+
+const INITIAL_POSITION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 15000,
+  maximumAge: 5000,
   forceRequestLocation: true,
   showLocationDialog: true,
 };
@@ -77,8 +89,10 @@ function toRadians(value: number) {
 
 function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
   const earthRadius = 6371000;
+
   const latDelta = toRadians(to.latitude - from.latitude);
   const lonDelta = toRadians(to.longitude - from.longitude);
+
   const fromLat = toRadians(from.latitude);
   const toLat = toRadians(to.latitude);
 
@@ -90,6 +104,7 @@ function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
       Math.sin(lonDelta / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
   return earthRadius * c;
 }
 
@@ -123,6 +138,7 @@ async function persistSnapshot(force = false) {
   const snapshotToPersist = cloneSnapshot(trackerSession.currentSnapshot);
 
   await writeTrackingSession(snapshotToPersist);
+
   trackerSession.lastPersistedAt = now;
 }
 
@@ -133,6 +149,7 @@ async function refreshNotification(snapshot: TrackingSnapshot) {
   }
 
   await ensureNotificationChannel(TRACKING_CHANNEL_ID);
+
   await showTrackingNotification({
     notificationId: TRACKING_NOTIFICATION_ID,
     channelId: TRACKING_CHANNEL_ID,
@@ -186,7 +203,10 @@ function createPointFromPosition(position: GeoPosition): TrackingPoint {
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
     timestamp: position.timestamp ?? Date.now(),
-    accuracy: position.coords.accuracy,
+    accuracy:
+      typeof position.coords.accuracy === 'number'
+        ? position.coords.accuracy
+        : null,
     altitude:
       typeof position.coords.altitude === 'number'
         ? position.coords.altitude
@@ -204,7 +224,23 @@ function createPointFromPosition(position: GeoPosition): TrackingPoint {
   };
 }
 
-function shouldUsePoint(point: TrackingPoint) {
+function shouldUsePoint(
+  point: TrackingPoint,
+  previousPoint?: TrackingPoint | null,
+) {
+  /**
+   * El primer punto siempre lo aceptamos.
+   * Si no hacemos esto, en interiores o con señal débil la app puede quedarse
+   * esperando ubicación aunque Android sí haya entregado una posición.
+   */
+  if (!previousPoint) {
+    return true;
+  }
+
+  /**
+   * Antes estaba muy estricto.
+   * Con accuracy > 40 se descartaban demasiados puntos.
+   */
   if (
     typeof point.accuracy === 'number' &&
     Number.isFinite(point.accuracy) &&
@@ -216,16 +252,17 @@ function shouldUsePoint(point: TrackingPoint) {
   return true;
 }
 
-  return true;
-}
-
-function updateAscent(previousPoint: TrackingPoint | null, nextPoint: TrackingPoint) {
+function updateAscent(
+  previousPoint: TrackingPoint | null,
+  nextPoint: TrackingPoint,
+) {
   if (!previousPoint) {
     return trackerSession.currentSnapshot.ascentMeters;
   }
 
   const previousAltitude =
     typeof previousPoint.altitude === 'number' ? previousPoint.altitude : null;
+
   const nextAltitude =
     typeof nextPoint.altitude === 'number' ? nextPoint.altitude : null;
 
@@ -251,20 +288,43 @@ function stopWatchingPosition() {
   Geolocation.stopObserving();
 }
 
-function handleWatchError() {
-  // dejamos el tracker vivo, solo sin última posición válida nueva
+function handleWatchError(error?: GeoError) {
+  trackerSession.currentSnapshot = {
+    ...trackerSession.currentSnapshot,
+    errorCode: error?.code ? String(error.code) : 'LOCATION_ERROR',
+    lastUpdatedAt: Date.now(),
+  };
+
+  emitSnapshot();
+
+  if (__DEV__) {
+    console.warn('[tracker] watchPosition error', error);
+  }
 }
 
 function startWatchingPosition() {
   stopWatchingPosition();
+
+  /**
+   * Pedimos una ubicación inicial para que la UI no dependa solamente
+   * del primer callback de watchPosition.
+   */
+  Geolocation.getCurrentPosition(
+    position => {
+      void upsertPosition(position);
+    },
+    error => {
+      handleWatchError(error);
+    },
+    INITIAL_POSITION_OPTIONS,
+  );
 
   trackerSession.watchId = Geolocation.watchPosition(
     position => {
       void upsertPosition(position);
     },
     error => {
-      handleWatchError();
-      console.warn('[tracker] watchPosition error', error);
+      handleWatchError(error);
     },
     WATCH_OPTIONS,
   );
@@ -276,22 +336,41 @@ export async function startTracker(activityType: ActivityType) {
 
   trackerSession.currentSnapshot = {
     ...createIdleTrackingSnapshot(activityType),
+
     isActive: true,
     isPaused: false,
     isFinished: false,
+
     startedAt: now,
+    pausedAt: null,
+    finishedAt: null,
+    lastUpdatedAt: now,
+
     activityType,
+
     route: previous.isFinished ? [] : previous.route,
     lastPoint: previous.isFinished ? null : previous.lastPoint,
+    location: previous.isFinished ? null : previous.location,
+
+    hasLocation: previous.isFinished
+      ? false
+      : Boolean(previous.location ?? previous.lastPoint),
+
     distanceMeters: previous.isFinished ? 0 : previous.distanceMeters,
     speedMps: 0,
     ascentMeters: previous.isFinished ? 0 : previous.ascentMeters,
     elapsedMs: previous.isFinished ? 0 : previous.elapsedMs,
-    lastUpdatedAt: now,
+
+    altitudeMeters: previous.isFinished
+      ? null
+      : previous.altitudeMeters ?? previous.location?.altitude ?? null,
+
+    errorCode: null,
   };
 
   scheduleElapsedTick();
   startWatchingPosition();
+
   await notifySnapshotChanged(true);
 }
 
@@ -305,6 +384,7 @@ export async function pauseTracker() {
   trackerSession.currentSnapshot = {
     ...snapshot,
     isPaused: true,
+    pausedAt: Date.now(),
     elapsedMs: getElapsedMs(snapshot),
     startedAt: null,
     speedMps: 0,
@@ -313,6 +393,7 @@ export async function pauseTracker() {
 
   stopWatchingPosition();
   stopElapsedTick();
+
   await notifySnapshotChanged(true);
 }
 
@@ -326,12 +407,15 @@ export async function resumeTracker() {
   trackerSession.currentSnapshot = {
     ...snapshot,
     isPaused: false,
+    pausedAt: null,
     startedAt: Date.now(),
     lastUpdatedAt: Date.now(),
+    errorCode: null,
   };
 
   scheduleElapsedTick();
   startWatchingPosition();
+
   await notifySnapshotChanged(true);
 }
 
@@ -347,14 +431,17 @@ export async function finishTracker() {
     isActive: false,
     isPaused: false,
     isFinished: true,
+    finishedAt: Date.now(),
     elapsedMs: getElapsedMs(snapshot),
     startedAt: null,
+    pausedAt: null,
     speedMps: 0,
     lastUpdatedAt: Date.now(),
   };
 
   stopWatchingPosition();
   stopElapsedTick();
+
   await notifySnapshotChanged(true);
 }
 
@@ -367,6 +454,7 @@ export async function resetTracker(activityType: ActivityType = 'run') {
 
   await clearTrackingSession();
   await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
   emitSnapshot();
 }
 
@@ -384,6 +472,7 @@ export async function upsertPosition(position: GeoPosition) {
   }
 
   const previousPoint = snapshot.lastPoint;
+
   let nextDistance = snapshot.distanceMeters;
   let nextAscent = snapshot.ascentMeters;
 
@@ -398,10 +487,13 @@ export async function upsertPosition(position: GeoPosition) {
   }
 
   const nextElapsedMs = getElapsedMs(snapshot);
-  const nextRoute =
-    !previousPoint || calculateDistanceMeters(previousPoint, point) >= 1.5
-      ? [...snapshot.route, point]
-      : snapshot.route;
+
+  const shouldAppendToRoute =
+    !previousPoint || calculateDistanceMeters(previousPoint, point) >= 1.5;
+
+  const nextRoute = shouldAppendToRoute
+    ? [...snapshot.route, point]
+    : snapshot.route;
 
   trackerSession.currentSnapshot = {
     ...snapshot,
@@ -411,6 +503,7 @@ export async function upsertPosition(position: GeoPosition) {
     lastPoint: point,
     location: point,
     hasLocation: true,
+
     altitudeMeters: typeof point.altitude === 'number' ? point.altitude : null,
     errorCode: null,
 
@@ -427,6 +520,7 @@ export async function upsertPosition(position: GeoPosition) {
 
 export function getTrackerSnapshot() {
   scheduleElapsedTick();
+
   return cloneSnapshot(trackerSession.currentSnapshot);
 }
 
@@ -440,6 +534,7 @@ export async function hydrateTrackerFromStorage() {
   }
 
   trackerSession.currentSnapshot = stored;
+
   scheduleElapsedTick();
   emitSnapshot();
 

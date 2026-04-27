@@ -6,8 +6,12 @@ export type TrackingPoint = {
   latitude: number;
   longitude: number;
   timestamp: number;
-  speed?: number;
+
+  accuracy?: number | null;
   altitude?: number | null;
+  altitudeAccuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
 };
 
 export type TrackingSummary = {
