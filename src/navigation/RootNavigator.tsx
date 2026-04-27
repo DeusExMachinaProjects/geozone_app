@@ -50,6 +50,7 @@ export function RootNavigator() {
         ) : status === 'authenticated' ? (
           <>
             <Stack.Screen name="MainTabs" component={AppTabs} />
+
             <Stack.Screen name="Run" component={RunScreen} />
             <Stack.Screen name="Ride" component={RideScreen} />
             <Stack.Screen name="Options" component={OptionsScreen} />
