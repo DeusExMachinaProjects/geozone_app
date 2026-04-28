@@ -1,5 +1,3 @@
-import type {ImageSourcePropType} from 'react-native';
-
 export type AvatarDirection = 'front' | 'right' | 'back' | 'left';
 
 export type AvatarBodyType = 'masculine' | 'feminine';
@@ -9,7 +7,7 @@ export type AvatarHairStyle =
   | 'messy'
   | 'bob'
   | 'ponytail'
-  | 'twin_bun'
+  | 'twinBuns'
   | 'braid'
   | 'mohawk';
 
@@ -34,12 +32,27 @@ export type AvatarConfig = {
   bottomStyle: AvatarBottomStyle;
   shoesStyle: AvatarShoesStyle;
   accessoryStyle: AvatarAccessoryStyle;
+
+  skinTone?: string;
+  hairColor?: string;
+  topColor?: string;
+  bottomColor?: string;
+  shoesColor?: string;
+  accessoryColor?: string;
 };
 
-export type AvatarLayerImages = Record<AvatarDirection, ImageSourcePropType>;
+export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
+  bodyType: 'masculine',
+  hairStyle: 'spiky',
+  topStyle: 'shirt',
+  bottomStyle: 'pants',
+  shoesStyle: 'sneakers',
+  accessoryStyle: 'none',
 
-export type AvatarCatalogItem<T extends string> = {
-  id: T;
-  label: string;
-  previewDirection?: AvatarDirection;
+  skinTone: '#F2B879',
+  hairColor: '#F6A623',
+  topColor: '#F6A623',
+  bottomColor: '#151515',
+  shoesColor: '#FFFFFF',
+  accessoryColor: '#E84D3D',
 };

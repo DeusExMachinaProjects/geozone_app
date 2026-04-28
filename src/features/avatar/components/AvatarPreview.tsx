@@ -1,6 +1,17 @@
-import React from 'react';
-import {Image, StyleSheet, View} from 'react-native';
-import type {AvatarConfig, AvatarDirection} from '../types';
+import React, {useMemo} from 'react';
+import {
+  Image,
+  ImageSourcePropType,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
+import {
+  AvatarConfig,
+  AvatarDirection,
+  DEFAULT_AVATAR_CONFIG,
+} from '../types';
 import {
   avatarAccessoryAssets,
   avatarBodyAssets,
@@ -8,54 +19,103 @@ import {
   avatarHairAssets,
   avatarShoesAssets,
   avatarTopAssets,
-} from '../data/avatarAssets';
+} from '../data/avatarSpriteManifest';
 
 type AvatarPreviewProps = {
-  config: AvatarConfig;
+  config?: Partial<AvatarConfig>;
   direction?: AvatarDirection;
   size?: number;
   showShadow?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
+
+function safeAsset(
+  asset?: ImageSourcePropType,
+  fallback?: ImageSourcePropType,
+): ImageSourcePropType | undefined {
+  return asset ?? fallback;
+}
 
 export function AvatarPreview({
   config,
   direction = 'front',
   size = 180,
   showShadow = true,
+  style,
 }: AvatarPreviewProps) {
-  const body = avatarBodyAssets[config.bodyType]?.[direction];
-  const hair = avatarHairAssets[config.hairStyle]?.[direction];
-  const top = avatarTopAssets[config.topStyle]?.[direction];
-  const bottom = avatarBottomAssets[config.bottomStyle]?.[direction];
-  const shoes = avatarShoesAssets[config.shoesStyle]?.[direction];
+  const avatarConfig = useMemo<AvatarConfig>(
+    () => ({
+      ...DEFAULT_AVATAR_CONFIG,
+      ...(config ?? {}),
+    }),
+    [config],
+  );
+
+  const body =
+    safeAsset(
+      avatarBodyAssets[avatarConfig.bodyType]?.[direction],
+      avatarBodyAssets[DEFAULT_AVATAR_CONFIG.bodyType][direction],
+    ) ?? avatarBodyAssets.masculine.front;
+
+  const hair =
+    safeAsset(
+      avatarHairAssets[avatarConfig.hairStyle]?.[direction],
+      avatarHairAssets[DEFAULT_AVATAR_CONFIG.hairStyle][direction],
+    ) ?? avatarHairAssets.spiky.front;
+
+  const top =
+    safeAsset(
+      avatarTopAssets[avatarConfig.topStyle]?.[direction],
+      avatarTopAssets[DEFAULT_AVATAR_CONFIG.topStyle][direction],
+    ) ?? avatarTopAssets.shirt.front;
+
+  const bottom =
+    safeAsset(
+      avatarBottomAssets[avatarConfig.bottomStyle]?.[direction],
+      avatarBottomAssets[DEFAULT_AVATAR_CONFIG.bottomStyle][direction],
+    ) ?? avatarBottomAssets.pants.front;
+
+  const shoes =
+    safeAsset(
+      avatarShoesAssets[avatarConfig.shoesStyle]?.[direction],
+      avatarShoesAssets[DEFAULT_AVATAR_CONFIG.shoesStyle][direction],
+    ) ?? avatarShoesAssets.sneakers.front;
+
   const accessory =
-    config.accessoryStyle === 'none'
+    avatarConfig.accessoryStyle === 'none'
       ? undefined
-      : avatarAccessoryAssets[config.accessoryStyle]?.[direction];
+      : avatarAccessoryAssets[avatarConfig.accessoryStyle]?.[direction];
 
   return (
-    <View style={[styles.stage, {width: size, height: size}]}>
-      {showShadow ? <View style={styles.shadow} /> : null}
-
-      {body ? (
-        <Image source={body} style={styles.layer} resizeMode="contain" />
+    <View
+      style={[
+        styles.root,
+        {
+          width: size,
+          height: size,
+        },
+        style,
+      ]}>
+      {showShadow ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.shadow,
+            {
+              width: size * 0.36,
+              height: size * 0.12,
+              bottom: size * 0.13,
+              borderRadius: size,
+            },
+          ]}
+        />
       ) : null}
 
-      {bottom ? (
-        <Image source={bottom} style={styles.layer} resizeMode="contain" />
-      ) : null}
-
-      {shoes ? (
-        <Image source={shoes} style={styles.layer} resizeMode="contain" />
-      ) : null}
-
-      {top ? (
-        <Image source={top} style={styles.layer} resizeMode="contain" />
-      ) : null}
-
-      {hair ? (
-        <Image source={hair} style={styles.layer} resizeMode="contain" />
-      ) : null}
+      <Image source={body} style={styles.layer} resizeMode="contain" />
+      <Image source={bottom} style={styles.layer} resizeMode="contain" />
+      <Image source={shoes} style={styles.layer} resizeMode="contain" />
+      <Image source={top} style={styles.layer} resizeMode="contain" />
+      <Image source={hair} style={styles.layer} resizeMode="contain" />
 
       {accessory ? (
         <Image source={accessory} style={styles.layer} resizeMode="contain" />
@@ -64,27 +124,22 @@ export function AvatarPreview({
   );
 }
 
+export default AvatarPreview;
+
 const styles = StyleSheet.create({
-  stage: {
+  root: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
   },
-
   layer: {
     position: 'absolute',
     width: '100%',
     height: '100%',
   },
-
   shadow: {
     position: 'absolute',
-    bottom: '14%',
-    width: '34%',
-    height: '9%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.36)',
-    transform: [{scaleX: 1.45}],
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    transform: [{scaleX: 1.2}],
   },
 });

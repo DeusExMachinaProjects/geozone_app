@@ -1,328 +1,176 @@
-import {ImageSourcePropType} from 'react-native';
-import type {AvatarConfig, AvatarFacing} from '../types';
+import type {ImageSourcePropType} from 'react-native';
+import type {
+  AvatarAccessoryStyle,
+  AvatarBodyType,
+  AvatarBottomStyle,
+  AvatarDirection,
+  AvatarHairStyle,
+  AvatarShoesStyle,
+  AvatarTopStyle,
+} from '../types';
 
-export type AvatarSpriteLayer = {
-  key: string;
-  source: ImageSourcePropType | null;
-  tintColor?: string;
-  flipX?: boolean;
-  zIndex: number;
-};
+type DirectionalAssets = Record<AvatarDirection, ImageSourcePropType>;
 
-type DirectionalSpriteSet = {
-  front: ImageSourcePropType | null;
-  right: ImageSourcePropType | null;
-  back: ImageSourcePropType | null;
-  left?: ImageSourcePropType | null;
-};
-
-type DirectionalResult = {
-  source: ImageSourcePropType | null;
-  flipX: boolean;
-};
-
-/**
- * IMPORTANTE:
- * Por ahora todo está en null para que compile sin romper.
- * Cuando tengas tus PNG transparentes, reemplaza los null por require(...).
- *
- * Ejemplo:
- * front: require('../../../assets/avatar/body/masculine/front.png')
- */
-
-const BODY_BASES: Record<string, DirectionalSpriteSet> = {
+export const avatarBodyAssets: Record<AvatarBodyType, DirectionalAssets> = {
   masculine: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/body/masculine/front.png'),
+    right: require('../../../../assets/avatar/body/masculine/right.png'),
+    back: require('../../../../assets/avatar/body/masculine/back.png'),
+    left: require('../../../../assets/avatar/body/masculine/left.png'),
   },
   feminine: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/body/feminine/front.png'),
+    right: require('../../../../assets/avatar/body/feminine/right.png'),
+    back: require('../../../../assets/avatar/body/feminine/back.png'),
+    left: require('../../../../assets/avatar/body/feminine/left.png'),
   },
 };
 
-const HAIR_STYLES: Record<string, DirectionalSpriteSet> = {
+export const avatarHairAssets: Record<AvatarHairStyle, DirectionalAssets> = {
   spiky: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/hair/spiky/front.png'),
+    right: require('../../../../assets/avatar/hair/spiky/right.png'),
+    back: require('../../../../assets/avatar/hair/spiky/back.png'),
+    left: require('../../../../assets/avatar/hair/spiky/left.png'),
   },
-  rebel: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+  messy: {
+    front: require('../../../../assets/avatar/hair/messy/front.png'),
+    right: require('../../../../assets/avatar/hair/messy/right.png'),
+    back: require('../../../../assets/avatar/hair/messy/back.png'),
+    left: require('../../../../assets/avatar/hair/messy/left.png'),
   },
   bob: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/hair/bob/front.png'),
+    right: require('../../../../assets/avatar/hair/bob/right.png'),
+    back: require('../../../../assets/avatar/hair/bob/back.png'),
+    left: require('../../../../assets/avatar/hair/bob/left.png'),
   },
-  short: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+  ponytail: {
+    front: require('../../../../assets/avatar/hair/ponytail/front.png'),
+    right: require('../../../../assets/avatar/hair/ponytail/right.png'),
+    back: require('../../../../assets/avatar/hair/ponytail/back.png'),
+    left: require('../../../../assets/avatar/hair/ponytail/left.png'),
   },
-  long: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+  twinBuns: {
+    front: require('../../../../assets/avatar/hair/twin_buns/front.png'),
+    right: require('../../../../assets/avatar/hair/twin_buns/right.png'),
+    back: require('../../../../assets/avatar/hair/twin_buns/back.png'),
+    left: require('../../../../assets/avatar/hair/twin_buns/left.png'),
+  },
+  braid: {
+    front: require('../../../../assets/avatar/hair/braid/front.png'),
+    right: require('../../../../assets/avatar/hair/braid/right.png'),
+    back: require('../../../../assets/avatar/hair/braid/back.png'),
+    left: require('../../../../assets/avatar/hair/braid/left.png'),
+  },
+  mohawk: {
+    front: require('../../../../assets/avatar/hair/mohawk/front.png'),
+    right: require('../../../../assets/avatar/hair/mohawk/right.png'),
+    back: require('../../../../assets/avatar/hair/mohawk/back.png'),
+    left: require('../../../../assets/avatar/hair/mohawk/left.png'),
   },
 };
 
-const TOP_STYLES: Record<string, DirectionalSpriteSet> = {
-  hoodie: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
-  },
+export const avatarTopAssets: Record<AvatarTopStyle, DirectionalAssets> = {
   shirt: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/tops/shirt/front.png'),
+    right: require('../../../../assets/avatar/tops/shirt/right.png'),
+    back: require('../../../../assets/avatar/tops/shirt/back.png'),
+    left: require('../../../../assets/avatar/tops/shirt/left.png'),
+  },
+  hoodie: {
+    front: require('../../../../assets/avatar/tops/hoodie/front.png'),
+    right: require('../../../../assets/avatar/tops/hoodie/right.png'),
+    back: require('../../../../assets/avatar/tops/hoodie/back.png'),
+    left: require('../../../../assets/avatar/tops/hoodie/left.png'),
   },
   jacket: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/tops/jacket/front.png'),
+    right: require('../../../../assets/avatar/tops/jacket/right.png'),
+    back: require('../../../../assets/avatar/tops/jacket/back.png'),
+    left: require('../../../../assets/avatar/tops/jacket/left.png'),
   },
   jersey: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/tops/jersey/front.png'),
+    right: require('../../../../assets/avatar/tops/jersey/right.png'),
+    back: require('../../../../assets/avatar/tops/jersey/back.png'),
+    left: require('../../../../assets/avatar/tops/jersey/left.png'),
   },
 };
 
-const BOTTOM_STYLES: Record<string, DirectionalSpriteSet> = {
+export const avatarBottomAssets: Record<AvatarBottomStyle, DirectionalAssets> = {
   pants: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/bottoms/pants/front.png'),
+    right: require('../../../../assets/avatar/bottoms/pants/right.png'),
+    back: require('../../../../assets/avatar/bottoms/pants/back.png'),
+    left: require('../../../../assets/avatar/bottoms/pants/left.png'),
   },
   shorts: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/bottoms/shorts/front.png'),
+    right: require('../../../../assets/avatar/bottoms/shorts/right.png'),
+    back: require('../../../../assets/avatar/bottoms/shorts/back.png'),
+    left: require('../../../../assets/avatar/bottoms/shorts/left.png'),
   },
   cargo: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/bottoms/cargo/front.png'),
+    right: require('../../../../assets/avatar/bottoms/cargo/right.png'),
+    back: require('../../../../assets/avatar/bottoms/cargo/back.png'),
+    left: require('../../../../assets/avatar/bottoms/cargo/left.png'),
   },
 };
 
-const SHOE_STYLES: Record<string, DirectionalSpriteSet> = {
+export const avatarShoesAssets: Record<AvatarShoesStyle, DirectionalAssets> = {
   sneakers: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/shoes/sneakers/front.png'),
+    right: require('../../../../assets/avatar/shoes/sneakers/right.png'),
+    back: require('../../../../assets/avatar/shoes/sneakers/back.png'),
+    left: require('../../../../assets/avatar/shoes/sneakers/left.png'),
   },
   boots: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/shoes/boots/front.png'),
+    right: require('../../../../assets/avatar/shoes/boots/right.png'),
+    back: require('../../../../assets/avatar/shoes/boots/back.png'),
+    left: require('../../../../assets/avatar/shoes/boots/left.png'),
   },
-  runner: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+  running: {
+    front: require('../../../../assets/avatar/shoes/running/front.png'),
+    right: require('../../../../assets/avatar/shoes/running/right.png'),
+    back: require('../../../../assets/avatar/shoes/running/back.png'),
+    left: require('../../../../assets/avatar/shoes/running/left.png'),
   },
 };
 
-const ACCESSORY_STYLES: Record<string, DirectionalSpriteSet> = {
-  none: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
-  },
+export const avatarAccessoryAssets: Partial<
+  Record<Exclude<AvatarAccessoryStyle, 'none'>, DirectionalAssets>
+> = {
   cap: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/accessories/cap/front.png'),
+    right: require('../../../../assets/avatar/accessories/cap/right.png'),
+    back: require('../../../../assets/avatar/accessories/cap/back.png'),
+    left: require('../../../../assets/avatar/accessories/cap/left.png'),
   },
   glasses: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/accessories/glasses/front.png'),
+    right: require('../../../../assets/avatar/accessories/glasses/right.png'),
+    back: require('../../../../assets/avatar/accessories/glasses/back.png'),
+    left: require('../../../../assets/avatar/accessories/glasses/left.png'),
   },
   backpack: {
-    front: null,
-    right: null,
-    back: null,
-    left: null,
+    front: require('../../../../assets/avatar/accessories/backpack/front.png'),
+    right: require('../../../../assets/avatar/accessories/backpack/right.png'),
+    back: require('../../../../assets/avatar/accessories/backpack/back.png'),
+    left: require('../../../../assets/avatar/accessories/backpack/left.png'),
+  },
+  watch: {
+    front: require('../../../../assets/avatar/accessories/watch/front.png'),
+    right: require('../../../../assets/avatar/accessories/watch/right.png'),
+    back: require('../../../../assets/avatar/accessories/watch/back.png'),
+    left: require('../../../../assets/avatar/accessories/watch/left.png'),
+  },
+  bandana: {
+    front: require('../../../../assets/avatar/accessories/bandana/front.png'),
+    right: require('../../../../assets/avatar/accessories/bandana/right.png'),
+    back: require('../../../../assets/avatar/accessories/bandana/back.png'),
+    left: require('../../../../assets/avatar/accessories/bandana/left.png'),
   },
 };
-
-function getCatalogItem(
-  catalog: Record<string, DirectionalSpriteSet>,
-  requestedKey: string,
-  fallbackKey: string,
-): DirectionalSpriteSet {
-  if (catalog[requestedKey]) {
-    return catalog[requestedKey];
-  }
-
-  if (catalog[fallbackKey]) {
-    return catalog[fallbackKey];
-  }
-
-  const firstKey = Object.keys(catalog)[0];
-
-  return catalog[firstKey];
-}
-
-function resolveDirectionalSource(
-  set: DirectionalSpriteSet,
-  facing: AvatarFacing,
-): DirectionalResult {
-  if (facing === 'front') {
-    return {
-      source: set.front,
-      flipX: false,
-    };
-  }
-
-  if (facing === 'back') {
-    return {
-      source: set.back,
-      flipX: false,
-    };
-  }
-
-  if (facing === 'right') {
-    return {
-      source: set.right,
-      flipX: false,
-    };
-  }
-
-  if (set.left) {
-    return {
-      source: set.left,
-      flipX: false,
-    };
-  }
-
-  return {
-    source: set.right,
-    flipX: true,
-  };
-}
-
-export function getAvatarSpriteLayers(
-  config: AvatarConfig,
-  facing: AvatarFacing,
-): AvatarSpriteLayer[] {
-  const bodySet = getCatalogItem(
-    BODY_BASES,
-    config.bodyType,
-    'masculine',
-  );
-
-  const hairSet = getCatalogItem(
-    HAIR_STYLES,
-    config.hairStyle,
-    'spiky',
-  );
-
-  const topSet = getCatalogItem(
-    TOP_STYLES,
-    config.topStyle,
-    'hoodie',
-  );
-
-  const bottomSet = getCatalogItem(
-    BOTTOM_STYLES,
-    config.bottomStyle,
-    'pants',
-  );
-
-  const shoeSet = getCatalogItem(
-    SHOE_STYLES,
-    config.shoeStyle,
-    'sneakers',
-  );
-
-  const accessorySet = getCatalogItem(
-    ACCESSORY_STYLES,
-    config.accessory,
-    'none',
-  );
-
-  const body = resolveDirectionalSource(bodySet, facing);
-  const hair = resolveDirectionalSource(hairSet, facing);
-  const top = resolveDirectionalSource(topSet, facing);
-  const bottom = resolveDirectionalSource(bottomSet, facing);
-  const shoes = resolveDirectionalSource(shoeSet, facing);
-  const accessory = resolveDirectionalSource(accessorySet, facing);
-
-  return [
-    {
-      key: 'body',
-      source: body.source,
-      tintColor: config.skinTone,
-      flipX: body.flipX,
-      zIndex: 1,
-    },
-    {
-      key: 'bottom',
-      source: bottom.source,
-      tintColor: config.bottomColor,
-      flipX: bottom.flipX,
-      zIndex: 2,
-    },
-    {
-      key: 'shoes',
-      source: shoes.source,
-      tintColor: config.shoeColor,
-      flipX: shoes.flipX,
-      zIndex: 3,
-    },
-    {
-      key: 'top',
-      source: top.source,
-      tintColor: config.topColor,
-      flipX: top.flipX,
-      zIndex: 4,
-    },
-    {
-      key: 'hair',
-      source: hair.source,
-      tintColor: config.hairColor,
-      flipX: hair.flipX,
-      zIndex: 5,
-    },
-    {
-      key: 'accessory',
-      source: accessory.source,
-      tintColor: config.accessoryColor,
-      flipX: accessory.flipX,
-      zIndex: 6,
-    },
-  ].sort((a, b) => a.zIndex - b.zIndex);
-}
-
-export function hasSpriteAssets(layers: AvatarSpriteLayer[]) {
-  return layers.some(layer => layer.source !== null);
-}
