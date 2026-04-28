@@ -1,605 +1,734 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useMemo, useState} from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 
-import {styles, palette} from '../theme/screens/AvatarScreen.styles';
-import {AvatarSprite} from '../features/avatar/components/AvatarSprite';
-
+import type {RootStackParamList} from '../navigation/types';
+import {AvatarPreview} from '../features/avatar/components/AvatarPreview';
 import {
-  AVATAR_OPTIONS,
-  CATEGORY_LABELS,
-  COLOR_PALETTES,
-  DEFAULT_AVATAR,
+  accessoryOptions,
+  bodyOptions,
+  bottomOptions,
+  hairOptions,
+  shoesOptions,
+  topOptions,
 } from '../features/avatar/data/avatarOptions';
-
-import {
-  loadAvatarConfig,
-  saveAvatarConfig,
-} from '../features/avatar/storage/avatarStorage';
-
 import type {
+  AvatarAccessoryStyle,
   AvatarBodyType,
-  AvatarCategory,
+  AvatarBottomStyle,
   AvatarConfig,
-  AvatarFacing,
+  AvatarDirection,
+  AvatarHairStyle,
+  AvatarShoesStyle,
+  AvatarTopStyle,
 } from '../features/avatar/types';
 
-const CATEGORY_ORDER: AvatarCategory[] = [
-  'hair',
-  'face',
-  'top',
-  'bottom',
-  'shoes',
-  'accessories',
-];
+type AvatarScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Avatar'
+>;
 
-const FACING_OPTIONS: {id: AvatarFacing; label: string}[] = [
-  {id: 'front', label: 'Frente'},
-  {id: 'right', label: 'Perfil'},
-  {id: 'back', label: 'Espalda'},
-  {id: 'left', label: 'Perfil 2'},
-];
+type TabKey = 'hair' | 'face' | 'top' | 'bottom' | 'shoes' | 'accessory';
 
-export function AvatarScreen() {
-  const navigation = useNavigation();
+const directions: AvatarDirection[] = ['front', 'right', 'back', 'left'];
 
-  const [avatar, setAvatar] = useState<AvatarConfig>(DEFAULT_AVATAR);
-  const [activeCategory, setActiveCategory] =
-    useState<AvatarCategory>('hair');
-  const [previewFacing, setPreviewFacing] =
-    useState<AvatarFacing>('front');
+const defaultConfig: AvatarConfig = {
+  bodyType: 'masculine',
+  hairStyle: 'spiky',
+  topStyle: 'shirt',
+  bottomStyle: 'pants',
+  shoesStyle: 'sneakers',
+  accessoryStyle: 'none',
+};
+
+export default function AvatarScreen() {
+  const navigation = useNavigation<AvatarScreenNavigationProp>();
+
+  const [config, setConfig] = useState<AvatarConfig>(defaultConfig);
+  const [directionIndex, setDirectionIndex] = useState(0);
   const [zoomed, setZoomed] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<TabKey>('hair');
 
-  useEffect(() => {
-    let mounted = true;
+  const direction = directions[directionIndex];
 
-    loadAvatarConfig()
-      .then(savedAvatar => {
-        if (mounted) {
-          setAvatar(savedAvatar);
-        }
-      })
-      .catch(() => undefined);
+  const avatarSize = zoomed ? 250 : 210;
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const currentBodyLabel = useMemo(() => {
+    return bodyOptions.find(item => item.id === config.bodyType)?.label ?? '';
+  }, [config.bodyType]);
 
-  const selectedValue = useMemo(
-    () => getSelectedValue(avatar, activeCategory),
-    [activeCategory, avatar],
-  );
+  function rotateAvatar() {
+    setDirectionIndex(prev => (prev + 1) % directions.length);
+  }
 
-  const selectedColor = useMemo(
-    () => getSelectedColor(avatar, activeCategory),
-    [activeCategory, avatar],
-  );
+  function toggleZoom() {
+    setZoomed(prev => !prev);
+  }
 
-  const updateAvatar = (patch: Partial<AvatarConfig>) => {
-    setAvatar(current => ({
-      ...current,
-      ...patch,
+  function updateBodyType(bodyType: AvatarBodyType) {
+    setConfig(prev => ({
+      ...prev,
+      bodyType,
     }));
-  };
+  }
 
-  const selectOption = (category: AvatarCategory, id: string) => {
-    if (category === 'hair') {
-      updateAvatar({hairStyle: id});
-      return;
-    }
+  function updateHairStyle(hairStyle: AvatarHairStyle) {
+    setConfig(prev => ({
+      ...prev,
+      hairStyle,
+    }));
+  }
 
-    if (category === 'face') {
-      updateAvatar({skinTone: id});
-      return;
-    }
+  function updateTopStyle(topStyle: AvatarTopStyle) {
+    setConfig(prev => ({
+      ...prev,
+      topStyle,
+    }));
+  }
 
-    if (category === 'top') {
-      updateAvatar({topStyle: id});
-      return;
-    }
+  function updateBottomStyle(bottomStyle: AvatarBottomStyle) {
+    setConfig(prev => ({
+      ...prev,
+      bottomStyle,
+    }));
+  }
 
-    if (category === 'bottom') {
-      updateAvatar({bottomStyle: id});
-      return;
-    }
+  function updateShoesStyle(shoesStyle: AvatarShoesStyle) {
+    setConfig(prev => ({
+      ...prev,
+      shoesStyle,
+    }));
+  }
 
-    if (category === 'shoes') {
-      updateAvatar({shoeStyle: id});
-      return;
-    }
+  function updateAccessoryStyle(accessoryStyle: AvatarAccessoryStyle) {
+    setConfig(prev => ({
+      ...prev,
+      accessoryStyle,
+    }));
+  }
 
-    updateAvatar({accessory: id});
-  };
+  function renderTabButton(tab: TabKey, label: string, icon: string) {
+    const active = selectedTab === tab;
 
-  const selectColor = (category: AvatarCategory, color: string) => {
-    if (category === 'hair') {
-      updateAvatar({hairColor: color});
-      return;
-    }
-
-    if (category === 'face') {
-      updateAvatar({skinTone: color});
-      return;
-    }
-
-    if (category === 'top') {
-      updateAvatar({topColor: color});
-      return;
-    }
-
-    if (category === 'bottom') {
-      updateAvatar({bottomColor: color});
-      return;
-    }
-
-    if (category === 'shoes') {
-      updateAvatar({shoeColor: color});
-      return;
-    }
-
-    updateAvatar({accessoryColor: color});
-  };
-
-  const saveAvatar = async () => {
-    try {
-      await saveAvatarConfig(avatar);
-      Alert.alert(
-        'Avatar guardado',
-        'Tu avatar de GeoZone quedó listo para usar.',
-      );
-    } catch {
-      Alert.alert(
-        'No se pudo guardar',
-        'Intenta nuevamente en unos segundos.',
-      );
-    }
-  };
-
-  const rotatePreview = () => {
-    const currentIndex = FACING_OPTIONS.findIndex(
-      item => item.id === previewFacing,
+    return (
+      <Pressable
+        key={tab}
+        onPress={() => setSelectedTab(tab)}
+        style={[styles.tabButton, active && styles.tabButtonActive]}>
+        <Text style={[styles.tabIcon, active && styles.activeText]}>
+          {icon}
+        </Text>
+        <Text style={[styles.tabLabel, active && styles.activeText]}>
+          {label}
+        </Text>
+      </Pressable>
     );
+  }
 
-    const next =
-      FACING_OPTIONS[(currentIndex + 1) % FACING_OPTIONS.length];
+  function renderBodySelector() {
+    return (
+      <View style={styles.bodySelector}>
+        <View>
+          <Text style={styles.sectionEyebrow}>BASE</Text>
+          <Text style={styles.bodyTitle}>Tipo de cuerpo</Text>
+        </View>
 
-    setPreviewFacing(next.id);
-  };
+        <View style={styles.bodyButtons}>
+          {bodyOptions.map(item => {
+            const active = config.bodyType === item.id;
+
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => updateBodyType(item.id)}
+                style={[styles.bodyButton, active && styles.bodyButtonActive]}>
+                <Text style={[styles.bodyButtonText, active && styles.activeText]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function renderHairOptions() {
+    return (
+      <OptionGrid
+        title="Estilo de cabello"
+        items={hairOptions}
+        selectedId={config.hairStyle}
+        config={config}
+        previewPatchKey="hairStyle"
+        onSelect={value => updateHairStyle(value as AvatarHairStyle)}
+      />
+    );
+  }
+
+  function renderTopOptions() {
+    return (
+      <OptionGrid
+        title="Ropa superior"
+        items={topOptions}
+        selectedId={config.topStyle}
+        config={config}
+        previewPatchKey="topStyle"
+        onSelect={value => updateTopStyle(value as AvatarTopStyle)}
+      />
+    );
+  }
+
+  function renderBottomOptions() {
+    return (
+      <OptionGrid
+        title="Ropa inferior"
+        items={bottomOptions}
+        selectedId={config.bottomStyle}
+        config={config}
+        previewPatchKey="bottomStyle"
+        onSelect={value => updateBottomStyle(value as AvatarBottomStyle)}
+      />
+    );
+  }
+
+  function renderShoesOptions() {
+    return (
+      <OptionGrid
+        title="Calzado"
+        items={shoesOptions}
+        selectedId={config.shoesStyle}
+        config={config}
+        previewPatchKey="shoesStyle"
+        onSelect={value => updateShoesStyle(value as AvatarShoesStyle)}
+      />
+    );
+  }
+
+  function renderAccessoryOptions() {
+    return (
+      <OptionGrid
+        title="Accesorios"
+        items={accessoryOptions}
+        selectedId={config.accessoryStyle}
+        config={config}
+        previewPatchKey="accessoryStyle"
+        onSelect={value => updateAccessoryStyle(value as AvatarAccessoryStyle)}
+      />
+    );
+  }
+
+  function renderFacePanel() {
+    return (
+      <View style={styles.panelContent}>
+        <Text style={styles.panelTitle}>Rostro</Text>
+        <Text style={styles.panelDescription}>
+          Por ahora el rostro viene integrado en la base del cuerpo. El siguiente
+          paso será separar ojos, cejas y boca como capas independientes.
+        </Text>
+      </View>
+    );
+  }
+
+  function renderSelectedPanel() {
+    switch (selectedTab) {
+      case 'hair':
+        return renderHairOptions();
+      case 'face':
+        return renderFacePanel();
+      case 'top':
+        return renderTopOptions();
+      case 'bottom':
+        return renderBottomOptions();
+      case 'shoes':
+        return renderShoesOptions();
+      case 'accessory':
+        return renderAccessoryOptions();
+      default:
+        return renderHairOptions();
+    }
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.bg} />
+      <StatusBar barStyle="light-content" backgroundColor="#050505" />
 
       <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}>
-        <View style={styles.headerRow}>
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
           <Pressable
-            style={styles.iconButton}
-            onPress={() => navigation.goBack()}>
-            <Text style={styles.iconButtonText}>‹</Text>
+            onPress={() => navigation.goBack()}
+            style={styles.headerButton}>
+            <Text style={styles.headerButtonText}>‹</Text>
           </Pressable>
 
-          <View style={styles.headerCopy}>
+          <View style={styles.headerCenter}>
             <Text style={styles.title}>Crea tu avatar</Text>
             <Text style={styles.subtitle}>
               Personaliza tu estilo para conquistar GeoZone.
             </Text>
           </View>
 
-          <Pressable
-            style={styles.diceButton}
-            onPress={() => setAvatar(randomAvatar())}>
-            <Text style={styles.diceText}>▣</Text>
+          <Pressable style={[styles.headerButton, styles.saveButton]}>
+            <Text style={styles.saveButtonText}>□</Text>
           </Pressable>
         </View>
 
         <View style={styles.previewCard}>
           <View style={styles.previewGlow} />
-          <View style={styles.gridFloor} />
 
-          <AvatarSprite
-            config={avatar}
-            facing={previewFacing}
-            size={zoomed ? 205 : 168}
+          <AvatarPreview
+            config={config}
+            direction={direction}
+            size={avatarSize}
           />
 
           <View style={styles.previewActions}>
-            <Pressable
-              style={styles.previewActionButton}
-              onPress={rotatePreview}>
+            <Pressable onPress={rotateAvatar} style={styles.previewActionButton}>
               <Text style={styles.previewActionIcon}>↻</Text>
-              <Text style={styles.previewActionText}>Girar</Text>
+              <Text style={styles.previewActionLabel}>Girar</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.previewActionButton}
-              onPress={() => setZoomed(current => !current)}>
-              <Text style={styles.previewActionIcon}>
-                {zoomed ? '−' : '+'}
-              </Text>
-              <Text style={styles.previewActionText}>
+            <Pressable onPress={toggleZoom} style={styles.previewActionButton}>
+              <Text style={styles.previewActionIcon}>{zoomed ? '−' : '+'}</Text>
+              <Text style={styles.previewActionLabel}>
                 {zoomed ? 'Alejar' : 'Acercar'}
               </Text>
             </Pressable>
           </View>
         </View>
 
-        <View style={styles.bodyTypeCard}>
-          <View>
-            <Text style={styles.sectionOverline}>Base</Text>
-            <Text style={styles.sectionTitle}>Tipo de cuerpo</Text>
-          </View>
+        {renderBodySelector()}
 
-          <View style={styles.bodyToggleGroup}>
-            <BodyToggle
-              label="Masculino"
-              active={avatar.bodyType === 'masculine'}
-              onPress={() => updateAvatar({bodyType: 'masculine'})}
-            />
-
-            <BodyToggle
-              label="Femenino"
-              active={avatar.bodyType === 'feminine'}
-              onPress={() => updateAvatar({bodyType: 'feminine'})}
-            />
-          </View>
-        </View>
-
-        <View style={styles.editorCard}>
+        <View style={styles.tabsContainer}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryTabs}>
-            {CATEGORY_ORDER.map(category => {
-              const meta = CATEGORY_LABELS[category];
-              const active = category === activeCategory;
-
-              return (
-                <Pressable
-                  key={category}
-                  style={[
-                    styles.categoryTab,
-                    active && styles.categoryTabActive,
-                  ]}
-                  onPress={() => setActiveCategory(category)}>
-                  <Text
-                    style={[
-                      styles.categoryIcon,
-                      active && styles.categoryIconActive,
-                    ]}>
-                    {meta.icon}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.categoryLabel,
-                      active && styles.categoryLabelActive,
-                    ]}>
-                    {meta.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            contentContainerStyle={styles.tabsContent}>
+            {renderTabButton('hair', 'Cabello', '✦')}
+            {renderTabButton('face', 'Rostro', '◉')}
+            {renderTabButton('top', 'Superior', '▣')}
+            {renderTabButton('bottom', 'Inferior', '▥')}
+            {renderTabButton('shoes', 'Calzado', '◒')}
+            {renderTabButton('accessory', 'Accesorios', '◇')}
           </ScrollView>
-
-          <View style={styles.editorSection}>
-            <Text style={styles.editorTitle}>
-              {getEditorTitle(activeCategory)}
-            </Text>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionList}>
-              {AVATAR_OPTIONS[activeCategory].map(option => {
-                const active = selectedValue === option.id;
-                const optionAvatar = buildPreviewAvatar(
-                  avatar,
-                  activeCategory,
-                  option.id,
-                );
-
-                return (
-                  <Pressable
-                    key={option.id}
-                    style={[
-                      styles.optionTile,
-                      active && styles.optionTileActive,
-                    ]}
-                    onPress={() =>
-                      selectOption(activeCategory, option.id)
-                    }>
-                    <AvatarSprite
-                      config={optionAvatar}
-                      size={74}
-                      facing="front"
-                    />
-
-                    <Text
-                      style={[
-                        styles.optionLabel,
-                        active && styles.optionLabelActive,
-                      ]}
-                      numberOfLines={1}>
-                      {option.label}
-                    </Text>
-
-                    {active ? (
-                      <Text style={styles.checkBadge}>✓</Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View style={styles.editorSection}>
-            <Text style={styles.editorTitle}>
-              {getColorTitle(activeCategory)}
-            </Text>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.colorList}>
-              {COLOR_PALETTES[activeCategory].map(color => {
-                const active =
-                  selectedColor.toLowerCase() === color.toLowerCase();
-
-                return (
-                  <Pressable
-                    key={color}
-                    style={[
-                      styles.colorButton,
-                      active && styles.colorButtonActive,
-                    ]}
-                    onPress={() => selectColor(activeCategory, color)}>
-                    <View
-                      style={[
-                        styles.colorSwatch,
-                        {backgroundColor: color},
-                      ]}
-                    />
-
-                    {active ? (
-                      <Text style={styles.colorCheck}>✓</Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View style={styles.editorSection}>
-            <Text style={styles.editorTitle}>
-              Vista previa para mapa
-            </Text>
-
-            <View style={styles.facingGrid}>
-              {FACING_OPTIONS.map(item => {
-                const active = item.id === previewFacing;
-
-                return (
-                  <Pressable
-                    key={item.id}
-                    style={[
-                      styles.facingTile,
-                      active && styles.facingTileActive,
-                    ]}
-                    onPress={() => setPreviewFacing(item.id)}>
-                    <AvatarSprite
-                      config={avatar}
-                      facing={item.id}
-                      size={82}
-                    />
-
-                    <Text
-                      style={[
-                        styles.facingLabel,
-                        active && styles.facingLabelActive,
-                      ]}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
         </View>
 
-        <Pressable style={styles.saveButton} onPress={saveAvatar}>
-          <Text style={styles.saveButtonText}>Guardar avatar ✦</Text>
-        </Pressable>
+        <View style={styles.panel}>{renderSelectedPanel()}</View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.sectionEyebrow}>ACTUAL</Text>
+          <Text style={styles.summaryText}>
+            Base {currentBodyLabel} · Vista {direction}
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function BodyToggle({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
+type OptionGridProps<T extends string> = {
+  title: string;
+  items: Array<{
+    id: T;
+    label: string;
+  }>;
+  selectedId: T;
+  config: AvatarConfig;
+  previewPatchKey: keyof AvatarConfig;
+  onSelect: (id: T) => void;
+};
+
+function OptionGrid<T extends string>({
+  title,
+  items,
+  selectedId,
+  config,
+  previewPatchKey,
+  onSelect,
+}: OptionGridProps<T>) {
   return (
-    <Pressable
-      style={[styles.bodyToggle, active && styles.bodyToggleActive]}
-      onPress={onPress}>
-      <Text
-        style={[
-          styles.bodyToggleText,
-          active && styles.bodyToggleTextActive,
-        ]}>
-        {label}
-      </Text>
-    </Pressable>
+    <View style={styles.panelContent}>
+      <Text style={styles.panelTitle}>{title}</Text>
+
+      <View style={styles.optionGrid}>
+        {items.map(item => {
+          const active = selectedId === item.id;
+
+          const previewConfig = {
+            ...config,
+            [previewPatchKey]: item.id,
+          } as AvatarConfig;
+
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => onSelect(item.id)}
+              style={[styles.optionCard, active && styles.optionCardActive]}>
+              <View style={styles.optionPreview}>
+                <AvatarPreview
+                  config={previewConfig}
+                  direction="front"
+                  size={86}
+                  showShadow={false}
+                />
+              </View>
+
+              <Text
+                numberOfLines={1}
+                style={[styles.optionLabel, active && styles.activeText]}>
+                {item.label}
+              </Text>
+
+              {active ? (
+                <View style={styles.checkBadge}>
+                  <Text style={styles.checkText}>✓</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
-function getSelectedValue(
-  avatar: AvatarConfig,
-  category: AvatarCategory,
-) {
-  if (category === 'hair') {
-    return avatar.hairStyle;
-  }
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
 
-  if (category === 'face') {
-    return avatar.skinTone;
-  }
+  scroll: {
+    flex: 1,
+  },
 
-  if (category === 'top') {
-    return avatar.topStyle;
-  }
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 42,
+  },
 
-  if (category === 'bottom') {
-    return avatar.bottomStyle;
-  }
+  header: {
+    minHeight: 86,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
-  if (category === 'shoes') {
-    return avatar.shoeStyle;
-  }
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
 
-  return avatar.accessory;
-}
+  headerButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
 
-function getSelectedColor(
-  avatar: AvatarConfig,
-  category: AvatarCategory,
-) {
-  if (category === 'hair') {
-    return avatar.hairColor;
-  }
+  headerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 42,
+    lineHeight: 42,
+    marginTop: -4,
+  },
 
-  if (category === 'face') {
-    return avatar.skinTone;
-  }
+  saveButton: {
+    backgroundColor: 'rgba(255,79,79,0.14)',
+    borderColor: 'rgba(255,79,79,0.45)',
+  },
 
-  if (category === 'top') {
-    return avatar.topColor;
-  }
+  saveButtonText: {
+    color: '#FF6258',
+    fontSize: 25,
+    fontWeight: '900',
+  },
 
-  if (category === 'bottom') {
-    return avatar.bottomColor;
-  }
+  title: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+    textAlign: 'center',
+  },
 
-  if (category === 'shoes') {
-    return avatar.shoeColor;
-  }
+  subtitle: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
 
-  return avatar.accessoryColor;
-}
+  previewCard: {
+    height: 290,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,79,79,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
 
-function buildPreviewAvatar(
-  avatar: AvatarConfig,
-  category: AvatarCategory,
-  id: string,
-): AvatarConfig {
-  if (category === 'hair') {
-    return {...avatar, hairStyle: id};
-  }
+  previewGlow: {
+    position: 'absolute',
+    bottom: -82,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(255,75,68,0.28)',
+  },
 
-  if (category === 'face') {
-    return {...avatar, skinTone: id};
-  }
+  previewActions: {
+    position: 'absolute',
+    right: 16,
+    top: 64,
+    gap: 14,
+  },
 
-  if (category === 'top') {
-    return {...avatar, topStyle: id};
-  }
+  previewActionButton: {
+    width: 74,
+    minHeight: 68,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
 
-  if (category === 'bottom') {
-    return {...avatar, bottomStyle: id};
-  }
+  previewActionIcon: {
+    color: '#FFFFFF',
+    fontSize: 27,
+    fontWeight: '900',
+  },
 
-  if (category === 'shoes') {
-    return {...avatar, shoeStyle: id};
-  }
+  previewActionLabel: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.76)',
+    fontSize: 12,
+    fontWeight: '800',
+  },
 
-  return {...avatar, accessory: id};
-}
+  bodySelector: {
+    marginTop: 16,
+    borderRadius: 24,
+    padding: 16,
+    minHeight: 86,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.075)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
 
-function getEditorTitle(category: AvatarCategory) {
-  if (category === 'hair') {
-    return 'Estilo de cabello';
-  }
+  sectionEyebrow: {
+    color: '#FF5A52',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
 
-  if (category === 'face') {
-    return 'Tono de piel';
-  }
+  bodyTitle: {
+    marginTop: 5,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
 
-  if (category === 'top') {
-    return 'Ropa superior';
-  }
+  bodyButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
 
-  if (category === 'bottom') {
-    return 'Ropa inferior';
-  }
+  bodyButton: {
+    minWidth: 110,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
 
-  if (category === 'shoes') {
-    return 'Zapatillas';
-  }
+  bodyButtonActive: {
+    backgroundColor: 'rgba(255,80,72,0.28)',
+    borderColor: '#FF5A52',
+  },
 
-  return 'Accesorios';
-}
+  bodyButtonText: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 14,
+    fontWeight: '900',
+  },
 
-function getColorTitle(category: AvatarCategory) {
-  if (category === 'hair') {
-    return 'Color de cabello';
-  }
+  tabsContainer: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
 
-  if (category === 'face') {
-    return 'Tono';
-  }
+  tabsContent: {
+    padding: 10,
+    gap: 10,
+  },
 
-  if (category === 'top') {
-    return 'Color superior';
-  }
+  tabButton: {
+    width: 96,
+    height: 80,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
 
-  if (category === 'bottom') {
-    return 'Color inferior';
-  }
+  tabButtonActive: {
+    backgroundColor: 'rgba(255,79,79,0.20)',
+    borderColor: '#FF5A52',
+  },
 
-  if (category === 'shoes') {
-    return 'Color de calzado';
-  }
+  tabIcon: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 24,
+    fontWeight: '900',
+  },
 
-  return 'Color de accesorio';
-}
+  tabLabel: {
+    marginTop: 8,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 12,
+    fontWeight: '900',
+  },
 
-function randomAvatar(): AvatarConfig {
-  const pick = <T,>(items: T[]) =>
-    items[Math.floor(Math.random() * items.length)];
+  activeText: {
+    color: '#FFFFFF',
+  },
 
-  const bodyType: AvatarBodyType =
-    Math.random() > 0.5 ? 'masculine' : 'feminine';
+  panel: {
+    marginTop: 0,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
 
-  return {
-    bodyType,
-    skinTone: pick(COLOR_PALETTES.face),
-    hairStyle: pick(AVATAR_OPTIONS.hair).id,
-    hairColor: pick(COLOR_PALETTES.hair),
-    topStyle: pick(AVATAR_OPTIONS.top).id,
-    topColor: pick(COLOR_PALETTES.top),
-    bottomStyle: pick(AVATAR_OPTIONS.bottom).id,
-    bottomColor: pick(COLOR_PALETTES.bottom),
-    shoeStyle: pick(AVATAR_OPTIONS.shoes).id,
-    shoeColor: pick(COLOR_PALETTES.shoes),
-    accessory: pick(AVATAR_OPTIONS.accessories).id,
-    accessoryColor: pick(COLOR_PALETTES.accessories),
-  };
-}
+  panelContent: {
+    padding: 16,
+  },
 
-export default AvatarScreen;
+  panelTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 14,
+  },
+
+  panelDescription: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+
+  optionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+
+  optionCard: {
+    width: '30.5%',
+    minWidth: 96,
+    height: 138,
+    borderRadius: 16,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    position: 'relative',
+  },
+
+  optionCardActive: {
+    borderColor: '#FF5A52',
+    backgroundColor: 'rgba(255,79,79,0.16)',
+  },
+
+  optionPreview: {
+    width: 86,
+    height: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  optionLabel: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  checkBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF5A52',
+    borderWidth: 2,
+    borderColor: '#101010',
+  },
+
+  checkText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  summaryCard: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+
+  summaryText: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
