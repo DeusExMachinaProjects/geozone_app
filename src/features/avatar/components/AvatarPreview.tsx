@@ -1,133 +1,227 @@
 import React from 'react';
-import {
-  Image,
-  type ImageSourcePropType,
-  StyleSheet,
-  View,
-} from 'react-native';
+import {Image, ImageSourcePropType, StyleSheet, View} from 'react-native';
+
 import {
   avatarAccessoryAssets,
   avatarBodyAssets,
   avatarBottomAssets,
+  avatarHairAssets,
+  avatarShoesAssets,
+  avatarTopAssets,
+} from '../data/avatarAssets';
+
+import type {
+  AvatarAccessoryStyle,
+  AvatarBodyType,
+  AvatarBottomStyle,
   AvatarConfig,
   AvatarDirection,
-  avatarFootwearAssets,
-  avatarHairAssets,
-  avatarTopAssets,
-  defaultAvatarConfig,
-} from '../data/avatarSpriteManifest';
-import {
-  AvatarLayerKey,
-  BASE_SPRITE_CANVAS,
-  getAvatarLayerOrder,
-  getAvatarLayerTransforms,
-} from '../data/avatarLayerConfig';
+  AvatarHairStyle,
+  AvatarLayerImages,
+  AvatarShoesStyle,
+  AvatarTopStyle,
+} from '../types';
+
+type AvatarPreviewMode =
+  | 'full'
+  | 'body'
+  | 'hair'
+  | 'top'
+  | 'bottom'
+  | 'shoes'
+  | 'accessory';
 
 type AvatarPreviewProps = {
-  config?: AvatarConfig;
+  config?: Partial<AvatarConfig> | null;
   direction?: AvatarDirection;
   size?: number;
   showShadow?: boolean;
+  previewMode?: AvatarPreviewMode;
 };
 
+export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
+  bodyType: 'masculine',
+  hairStyle: 'spiky',
+  topStyle: 'shirt',
+  bottomStyle: 'pants',
+  shoesStyle: 'sneakers',
+  accessoryStyle: 'none',
+};
+
+function normalizeAvatarConfig(config?: Partial<AvatarConfig> | null): AvatarConfig {
+  return {
+    ...DEFAULT_AVATAR_CONFIG,
+    ...(config ?? {}),
+  };
+}
+
+function normalizeDirection(direction?: AvatarDirection): AvatarDirection {
+  if (
+    direction === 'front' ||
+    direction === 'right' ||
+    direction === 'back' ||
+    direction === 'left'
+  ) {
+    return direction;
+  }
+
+  return 'front';
+}
+
+function resolveDirectionalAsset<T extends string>(
+  assets: Partial<Record<T, AvatarLayerImages>>,
+  id: T | undefined,
+  direction: AvatarDirection,
+): ImageSourcePropType | null {
+  if (!id) {
+    return null;
+  }
+
+  const group = assets[id];
+
+  if (!group) {
+    return null;
+  }
+
+  return group[direction] ?? group.front ?? null;
+}
+
+function buildAvatarLayers(
+  rawConfig: Partial<AvatarConfig> | AvatarConfig | null | undefined,
+  rawDirection: AvatarDirection | undefined,
+  previewMode: AvatarPreviewMode,
+): ImageSourcePropType[] {
+  const config = normalizeAvatarConfig(rawConfig);
+  const direction = normalizeDirection(rawDirection);
+
+  const body = resolveDirectionalAsset(
+    avatarBodyAssets,
+    config.bodyType as AvatarBodyType,
+    direction,
+  );
+
+  const hair = resolveDirectionalAsset(
+    avatarHairAssets,
+    config.hairStyle as AvatarHairStyle,
+    direction,
+  );
+
+  const top = resolveDirectionalAsset(
+    avatarTopAssets,
+    config.topStyle as AvatarTopStyle,
+    direction,
+  );
+
+  const bottom = resolveDirectionalAsset(
+    avatarBottomAssets,
+    config.bottomStyle as AvatarBottomStyle,
+    direction,
+  );
+
+  const shoes = resolveDirectionalAsset(
+    avatarShoesAssets,
+    config.shoesStyle as AvatarShoesStyle,
+    direction,
+  );
+
+  const accessory =
+    config.accessoryStyle === 'none'
+      ? null
+      : resolveDirectionalAsset(
+          avatarAccessoryAssets,
+          config.accessoryStyle as AvatarAccessoryStyle,
+          direction,
+        );
+
+  switch (previewMode) {
+    case 'body':
+      return body ? [body] : [];
+
+    case 'hair':
+      return hair ? [hair] : [];
+
+    case 'top':
+      return top ? [top] : [];
+
+    case 'bottom':
+      return bottom ? [bottom] : [];
+
+    case 'shoes':
+      return shoes ? [shoes] : [];
+
+    case 'accessory':
+      return accessory ? [accessory] : [];
+
+    case 'full':
+    default:
+      return [body, bottom, shoes, top, hair, accessory].filter(
+        Boolean,
+      ) as ImageSourcePropType[];
+  }
+}
+
 export function AvatarPreview({
-  config = defaultAvatarConfig,
+  config,
   direction = 'front',
   size = 180,
   showShadow = true,
+  previewMode = 'full',
 }: AvatarPreviewProps) {
-  const safeConfig = config ?? defaultAvatarConfig;
-  const unit = size / BASE_SPRITE_CANVAS;
-
-  const body = avatarBodyAssets[safeConfig.bodyType]?.[direction];
-  const hair = avatarHairAssets[safeConfig.hairType]?.[direction];
-  const top = avatarTopAssets[safeConfig.topType]?.[direction];
-  const bottom = avatarBottomAssets[safeConfig.bottomType]?.[direction];
-  const footwear = avatarFootwearAssets[safeConfig.footwearType]?.[direction];
-
-  const accessory =
-    safeConfig.accessoryType !== 'none'
-      ? avatarAccessoryAssets[safeConfig.accessoryType]?.[direction]
-      : undefined;
-
-  const layerSources: Record<AvatarLayerKey, ImageSourcePropType | undefined> = {
-    body,
-    bottom,
-    footwear,
-    top,
-    hair,
-    accessory,
-  };
-
-  const orderedLayers = getAvatarLayerOrder(safeConfig, direction);
-  const transforms = getAvatarLayerTransforms(safeConfig, direction);
+  const safeDirection = normalizeDirection(direction);
+  const layers = buildAvatarLayers(config, safeDirection, previewMode);
 
   return (
-    <View style={[styles.root, {width: size, height: size}]}>
-      <View style={[styles.stage, {width: size, height: size}]}>
-        {showShadow ? (
-          <View
-            style={[
-              styles.shadow,
-              {
-                width: size * 0.44,
-                height: size * 0.10,
-                bottom: size * 0.06,
-                borderRadius: size * 0.05,
-              },
-            ]}
-          />
-        ) : null}
+    <View style={[styles.container, {width: size, height: size}]}>
+      {showShadow ? (
+        <View
+          style={[
+            styles.shadow,
+            {
+              width: size * 0.42,
+              height: size * 0.12,
+              borderRadius: size * 0.06,
+              bottom: size * 0.12,
+            },
+          ]}
+        />
+      ) : null}
 
-        {orderedLayers.map(layerKey => {
-          const source = layerSources[layerKey];
-          if (!source) {
-            return null;
-          }
-
-          const transform = transforms[layerKey];
-
-          return (
-            <Image
-              key={layerKey}
-              source={source}
-              resizeMode="contain"
-              style={[
-                styles.layer,
-                {
-                  width: size,
-                  height: size,
-                  transform: [
-                    {translateX: transform.x * unit},
-                    {translateY: transform.y * unit},
-                    {scale: transform.scale},
-                  ],
-                },
-              ]}
-            />
-          );
-        })}
-      </View>
+      {layers.map((source, index) => (
+        <Image
+          key={`${previewMode}-${safeDirection}-${index}`}
+          source={source}
+          resizeMode="contain"
+          style={[
+            styles.layer,
+            {
+              width: size,
+              height: size,
+            },
+          ]}
+        />
+      ))}
     </View>
   );
 }
 
+export default AvatarPreview;
+
 const styles = StyleSheet.create({
-  root: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stage: {
+  container: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
+
   layer: {
     position: 'absolute',
+    left: 0,
+    top: 0,
   },
+
   shadow: {
     position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.28)',
+    backgroundColor: 'rgba(0,0,0,0.34)',
   },
 });

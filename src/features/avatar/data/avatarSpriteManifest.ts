@@ -9,7 +9,7 @@ export type AvatarHairType =
   | 'messy'
   | 'bob'
   | 'ponytail'
-  | 'twinBun'
+  | 'twin_bun'
   | 'braid'
   | 'mohawk';
 
@@ -87,7 +87,7 @@ export const avatarHairAssets: Record<AvatarHairType, DirectionalAssets> = {
     back: require('../../../assets/avatar/hair/ponytail/back.png'),
     left: require('../../../assets/avatar/hair/ponytail/left.png'),
   },
-  twinBun: {
+  twin_bun: {
     front: require('../../../assets/avatar/hair/twin_bun/front.png'),
     right: require('../../../assets/avatar/hair/twin_bun/right.png'),
     back: require('../../../assets/avatar/hair/twin_bun/back.png'),
@@ -178,6 +178,7 @@ export const avatarFootwearAssets: Record<
     left: require('../../../assets/avatar/shoes/running/left.png'),
   },
 };
+export const avatarShoesAssets = avatarFootwearAssets;
 
 export const avatarAccessoryAssets: Partial<
   Record<AvatarAccessoryType, DirectionalAssets>
