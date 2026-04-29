@@ -12,7 +12,10 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 
 import type {RootStackParamList} from '../navigation/types';
-import {AvatarPreview} from '../features/avatar/components/AvatarPreview';
+import {
+  AvatarPreview,
+  DEFAULT_AVATAR_CONFIG,
+} from '../features/avatar/components/AvatarPreview';
 import {
   accessoryOptions,
   bodyOptions,
@@ -39,27 +42,26 @@ type AvatarScreenNavigationProp = NativeStackNavigationProp<
 
 type TabKey = 'hair' | 'face' | 'top' | 'bottom' | 'shoes' | 'accessory';
 
-const directions: AvatarDirection[] = ['front', 'right', 'back', 'left'];
+type PreviewPatchKey =
+  | 'hairStyle'
+  | 'topStyle'
+  | 'bottomStyle'
+  | 'shoesStyle'
+  | 'accessoryStyle';
 
-const defaultConfig: AvatarConfig = {
-  bodyType: 'masculine',
-  hairStyle: 'spiky',
-  topStyle: 'shirt',
-  bottomStyle: 'pants',
-  shoesStyle: 'sneakers',
-  accessoryStyle: 'none',
-};
+type OptionPreviewMode = 'hair' | 'top' | 'bottom' | 'shoes' | 'accessory';
+
+const directions: AvatarDirection[] = ['front', 'right', 'back', 'left'];
 
 export default function AvatarScreen() {
   const navigation = useNavigation<AvatarScreenNavigationProp>();
 
-  const [config, setConfig] = useState<AvatarConfig>(defaultConfig);
+  const [config, setConfig] = useState<AvatarConfig>(DEFAULT_AVATAR_CONFIG);
   const [directionIndex, setDirectionIndex] = useState(0);
   const [zoomed, setZoomed] = useState(false);
   const [selectedTab, setSelectedTab] = useState<TabKey>('hair');
 
-  const direction = directions[directionIndex];
-
+  const direction = directions[directionIndex] ?? 'front';
   const avatarSize = zoomed ? 250 : 210;
 
   const currentBodyLabel = useMemo(() => {
@@ -151,7 +153,8 @@ export default function AvatarScreen() {
                 key={item.id}
                 onPress={() => updateBodyType(item.id)}
                 style={[styles.bodyButton, active && styles.bodyButtonActive]}>
-                <Text style={[styles.bodyButtonText, active && styles.activeText]}>
+                <Text
+                  style={[styles.bodyButtonText, active && styles.activeText]}>
                   {item.label}
                 </Text>
               </Pressable>
@@ -170,6 +173,7 @@ export default function AvatarScreen() {
         selectedId={config.hairStyle}
         config={config}
         previewPatchKey="hairStyle"
+        previewMode="hair"
         onSelect={value => updateHairStyle(value as AvatarHairStyle)}
       />
     );
@@ -183,6 +187,7 @@ export default function AvatarScreen() {
         selectedId={config.topStyle}
         config={config}
         previewPatchKey="topStyle"
+        previewMode="top"
         onSelect={value => updateTopStyle(value as AvatarTopStyle)}
       />
     );
@@ -196,6 +201,7 @@ export default function AvatarScreen() {
         selectedId={config.bottomStyle}
         config={config}
         previewPatchKey="bottomStyle"
+        previewMode="bottom"
         onSelect={value => updateBottomStyle(value as AvatarBottomStyle)}
       />
     );
@@ -209,6 +215,7 @@ export default function AvatarScreen() {
         selectedId={config.shoesStyle}
         config={config}
         previewPatchKey="shoesStyle"
+        previewMode="shoes"
         onSelect={value => updateShoesStyle(value as AvatarShoesStyle)}
       />
     );
@@ -222,6 +229,7 @@ export default function AvatarScreen() {
         selectedId={config.accessoryStyle}
         config={config}
         previewPatchKey="accessoryStyle"
+        previewMode="accessory"
         onSelect={value => updateAccessoryStyle(value as AvatarAccessoryStyle)}
       />
     );
@@ -292,6 +300,7 @@ export default function AvatarScreen() {
             config={config}
             direction={direction}
             size={avatarSize}
+            previewMode="full"
           />
 
           <View style={styles.previewActions}>
@@ -346,7 +355,8 @@ type OptionGridProps<T extends string> = {
   }>;
   selectedId: T;
   config: AvatarConfig;
-  previewPatchKey: keyof AvatarConfig;
+  previewPatchKey: PreviewPatchKey;
+  previewMode: OptionPreviewMode;
   onSelect: (id: T) => void;
 };
 
@@ -356,6 +366,7 @@ function OptionGrid<T extends string>({
   selectedId,
   config,
   previewPatchKey,
+  previewMode,
   onSelect,
 }: OptionGridProps<T>) {
   return (
@@ -382,6 +393,7 @@ function OptionGrid<T extends string>({
                   direction="front"
                   size={86}
                   showShadow={false}
+                  previewMode={previewMode}
                 />
               </View>
 
@@ -687,6 +699,7 @@ const styles = StyleSheet.create({
     height: 86,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
 
   optionLabel: {
