@@ -1,221 +1,176 @@
 import type {ImageSourcePropType} from 'react-native';
+import type {
+  AvatarAccessoryStyle,
+  AvatarBodyType,
+  AvatarBottomStyle,
+  AvatarDirection,
+  AvatarHairStyle,
+  AvatarShoeStyle,
+  AvatarTopStyle,
+} from '../types';
 
-export type AvatarDirection = 'front' | 'right' | 'back' | 'left';
-
-export type AvatarBodyType = 'masculine' | 'feminine';
-
-export type AvatarHairType =
-  | 'none'
-  | 'spiky'
-  | 'messy'
-  | 'bob'
-  | 'ponytail'
-  | 'twin_bun'
-  | 'braid'
-  | 'mohawk';
-
-export type AvatarTopType =
-  | 'none'
-  | 'shirt'
-  | 'hoodie'
-  | 'jacket'
-  | 'jersey';
-
-export type AvatarBottomType =
-  | 'none'
-  | 'pants'
-  | 'shorts'
-  | 'cargo';
-
-export type AvatarShoesType =
-  | 'none'
-  | 'sneakers'
-  | 'boots'
-  | 'running';
-
-export type AvatarAccessoryType =
-  | 'none'
-  | 'cap'
-  | 'glasses'
-  | 'backpack'
-  | 'watch'
-  | 'bandana';
-
-export type DirectionalAssets = Record<AvatarDirection, ImageSourcePropType>;
+type DirectionalAssets = Record<AvatarDirection, ImageSourcePropType>;
 
 export const avatarBodyAssets: Record<AvatarBodyType, DirectionalAssets> = {
   masculine: {
-    front: require('../../../assets/avatar/body/masculine/front.png'),
-    right: require('../../../assets/avatar/body/masculine/right.png'),
-    back: require('../../../assets/avatar/body/masculine/back.png'),
-    left: require('../../../assets/avatar/body/masculine/left.png'),
+    front: require('../../../../assets/avatar/body/masculine/front.png'),
+    right: require('../../../../assets/avatar/body/masculine/right.png'),
+    back: require('../../../../assets/avatar/body/masculine/back.png'),
+    left: require('../../../../assets/avatar/body/masculine/left.png'),
   },
   feminine: {
-    front: require('../../../assets/avatar/body/feminine/front.png'),
-    right: require('../../../assets/avatar/body/feminine/right.png'),
-    back: require('../../../assets/avatar/body/feminine/back.png'),
-    left: require('../../../assets/avatar/body/feminine/left.png'),
+    front: require('../../../../assets/avatar/body/feminine/front.png'),
+    right: require('../../../../assets/avatar/body/feminine/right.png'),
+    back: require('../../../../assets/avatar/body/feminine/back.png'),
+    left: require('../../../../assets/avatar/body/feminine/left.png'),
   },
 };
 
-export const avatarHairAssets: Record<
-  Exclude<AvatarHairType, 'none'>,
-  DirectionalAssets
-> = {
+export const avatarHairAssets: Record<AvatarHairStyle, DirectionalAssets> = {
   spiky: {
-    front: require('../../../assets/avatar/hair/spiky/front.png'),
-    right: require('../../../assets/avatar/hair/spiky/right.png'),
-    back: require('../../../assets/avatar/hair/spiky/back.png'),
-    left: require('../../../assets/avatar/hair/spiky/left.png'),
+    front: require('../../../../assets/avatar/hair/spiky/front.png'),
+    right: require('../../../../assets/avatar/hair/spiky/right.png'),
+    back: require('../../../../assets/avatar/hair/spiky/back.png'),
+    left: require('../../../../assets/avatar/hair/spiky/left.png'),
   },
   messy: {
-    front: require('../../../assets/avatar/hair/messy/front.png'),
-    right: require('../../../assets/avatar/hair/messy/right.png'),
-    back: require('../../../assets/avatar/hair/messy/back.png'),
-    left: require('../../../assets/avatar/hair/messy/left.png'),
+    front: require('../../../../assets/avatar/hair/messy/front.png'),
+    right: require('../../../../assets/avatar/hair/messy/right.png'),
+    back: require('../../../../assets/avatar/hair/messy/back.png'),
+    left: require('../../../../assets/avatar/hair/messy/left.png'),
   },
   bob: {
-    front: require('../../../assets/avatar/hair/bob/front.png'),
-    right: require('../../../assets/avatar/hair/bob/right.png'),
-    back: require('../../../assets/avatar/hair/bob/back.png'),
-    left: require('../../../assets/avatar/hair/bob/left.png'),
+    front: require('../../../../assets/avatar/hair/bob/front.png'),
+    right: require('../../../../assets/avatar/hair/bob/right.png'),
+    back: require('../../../../assets/avatar/hair/bob/back.png'),
+    left: require('../../../../assets/avatar/hair/bob/left.png'),
   },
   ponytail: {
-    front: require('../../../assets/avatar/hair/ponytail/front.png'),
-    right: require('../../../assets/avatar/hair/ponytail/right.png'),
-    back: require('../../../assets/avatar/hair/ponytail/back.png'),
-    left: require('../../../assets/avatar/hair/ponytail/left.png'),
+    front: require('../../../../assets/avatar/hair/ponytail/front.png'),
+    right: require('../../../../assets/avatar/hair/ponytail/right.png'),
+    back: require('../../../../assets/avatar/hair/ponytail/back.png'),
+    left: require('../../../../assets/avatar/hair/ponytail/left.png'),
   },
-  twin_bun: {
-    front: require('../../../assets/avatar/hair/twin_bun/front.png'),
-    right: require('../../../assets/avatar/hair/twin_bun/right.png'),
-    back: require('../../../assets/avatar/hair/twin_bun/back.png'),
-    left: require('../../../assets/avatar/hair/twin_bun/left.png'),
+  twinBun: {
+    front: require('../../../../assets/avatar/hair/twinBun/front.png'),
+    right: require('../../../../assets/avatar/hair/twinBun/right.png'),
+    back: require('../../../../assets/avatar/hair/twinBun/back.png'),
+    left: require('../../../../assets/avatar/hair/twinBun/left.png'),
   },
   braid: {
-    front: require('../../../assets/avatar/hair/braid/front.png'),
-    right: require('../../../assets/avatar/hair/braid/right.png'),
-    back: require('../../../assets/avatar/hair/braid/back.png'),
-    left: require('../../../assets/avatar/hair/braid/left.png'),
+    front: require('../../../../assets/avatar/hair/braid/front.png'),
+    right: require('../../../../assets/avatar/hair/braid/right.png'),
+    back: require('../../../../assets/avatar/hair/braid/back.png'),
+    left: require('../../../../assets/avatar/hair/braid/left.png'),
   },
   mohawk: {
-    front: require('../../../assets/avatar/hair/mohawk/front.png'),
-    right: require('../../../assets/avatar/hair/mohawk/right.png'),
-    back: require('../../../assets/avatar/hair/mohawk/back.png'),
-    left: require('../../../assets/avatar/hair/mohawk/left.png'),
+    front: require('../../../../assets/avatar/hair/mohawk/front.png'),
+    right: require('../../../../assets/avatar/hair/mohawk/right.png'),
+    back: require('../../../../assets/avatar/hair/mohawk/back.png'),
+    left: require('../../../../assets/avatar/hair/mohawk/left.png'),
   },
 };
 
-export const avatarTopAssets: Record<
-  Exclude<AvatarTopType, 'none'>,
-  DirectionalAssets
-> = {
+export const avatarTopAssets: Record<AvatarTopStyle, DirectionalAssets> = {
   shirt: {
-    front: require('../../../assets/avatar/tops/shirt/front.png'),
-    right: require('../../../assets/avatar/tops/shirt/right.png'),
-    back: require('../../../assets/avatar/tops/shirt/back.png'),
-    left: require('../../../assets/avatar/tops/shirt/left.png'),
+    front: require('../../../../assets/avatar/top/shirt/front.png'),
+    right: require('../../../../assets/avatar/top/shirt/right.png'),
+    back: require('../../../../assets/avatar/top/shirt/back.png'),
+    left: require('../../../../assets/avatar/top/shirt/left.png'),
   },
   hoodie: {
-    front: require('../../../assets/avatar/tops/hoodie/front.png'),
-    right: require('../../../assets/avatar/tops/hoodie/right.png'),
-    back: require('../../../assets/avatar/tops/hoodie/back.png'),
-    left: require('../../../assets/avatar/tops/hoodie/left.png'),
+    front: require('../../../../assets/avatar/top/hoodie/front.png'),
+    right: require('../../../../assets/avatar/top/hoodie/right.png'),
+    back: require('../../../../assets/avatar/top/hoodie/back.png'),
+    left: require('../../../../assets/avatar/top/hoodie/left.png'),
   },
   jacket: {
-    front: require('../../../assets/avatar/tops/jacket/front.png'),
-    right: require('../../../assets/avatar/tops/jacket/right.png'),
-    back: require('../../../assets/avatar/tops/jacket/back.png'),
-    left: require('../../../assets/avatar/tops/jacket/left.png'),
+    front: require('../../../../assets/avatar/top/jacket/front.png'),
+    right: require('../../../../assets/avatar/top/jacket/right.png'),
+    back: require('../../../../assets/avatar/top/jacket/back.png'),
+    left: require('../../../../assets/avatar/top/jacket/left.png'),
   },
   jersey: {
-    front: require('../../../assets/avatar/tops/jersey/front.png'),
-    right: require('../../../assets/avatar/tops/jersey/right.png'),
-    back: require('../../../assets/avatar/tops/jersey/back.png'),
-    left: require('../../../assets/avatar/tops/jersey/left.png'),
+    front: require('../../../../assets/avatar/top/jersey/front.png'),
+    right: require('../../../../assets/avatar/top/jersey/right.png'),
+    back: require('../../../../assets/avatar/top/jersey/back.png'),
+    left: require('../../../../assets/avatar/top/jersey/left.png'),
   },
 };
 
-export const avatarBottomAssets: Record<
-  Exclude<AvatarBottomType, 'none'>,
-  DirectionalAssets
-> = {
+export const avatarBottomAssets: Record<AvatarBottomStyle, DirectionalAssets> = {
   pants: {
-    front: require('../../../assets/avatar/bottoms/pants/front.png'),
-    right: require('../../../assets/avatar/bottoms/pants/right.png'),
-    back: require('../../../assets/avatar/bottoms/pants/back.png'),
-    left: require('../../../assets/avatar/bottoms/pants/left.png'),
+    front: require('../../../../assets/avatar/bottom/pants/front.png'),
+    right: require('../../../../assets/avatar/bottom/pants/right.png'),
+    back: require('../../../../assets/avatar/bottom/pants/back.png'),
+    left: require('../../../../assets/avatar/bottom/pants/left.png'),
   },
   shorts: {
-    front: require('../../../assets/avatar/bottoms/shorts/front.png'),
-    right: require('../../../assets/avatar/bottoms/shorts/right.png'),
-    back: require('../../../assets/avatar/bottoms/shorts/back.png'),
-    left: require('../../../assets/avatar/bottoms/shorts/left.png'),
+    front: require('../../../../assets/avatar/bottom/shorts/front.png'),
+    right: require('../../../../assets/avatar/bottom/shorts/right.png'),
+    back: require('../../../../assets/avatar/bottom/shorts/back.png'),
+    left: require('../../../../assets/avatar/bottom/shorts/left.png'),
   },
   cargo: {
-    front: require('../../../assets/avatar/bottoms/cargo/front.png'),
-    right: require('../../../assets/avatar/bottoms/cargo/right.png'),
-    back: require('../../../assets/avatar/bottoms/cargo/back.png'),
-    left: require('../../../assets/avatar/bottoms/cargo/left.png'),
+    front: require('../../../../assets/avatar/bottom/cargo/front.png'),
+    right: require('../../../../assets/avatar/bottom/cargo/right.png'),
+    back: require('../../../../assets/avatar/bottom/cargo/back.png'),
+    left: require('../../../../assets/avatar/bottom/cargo/left.png'),
   },
 };
 
-export const avatarShoesAssets: Record<
-  Exclude<AvatarShoesType, 'none'>,
-  DirectionalAssets
-> = {
+export const avatarShoeAssets: Record<AvatarShoeStyle, DirectionalAssets> = {
   sneakers: {
-    front: require('../../../assets/avatar/shoes/sneakers/front.png'),
-    right: require('../../../assets/avatar/shoes/sneakers/right.png'),
-    back: require('../../../assets/avatar/shoes/sneakers/back.png'),
-    left: require('../../../assets/avatar/shoes/sneakers/left.png'),
+    front: require('../../../../assets/avatar/shoes/sneakers/front.png'),
+    right: require('../../../../assets/avatar/shoes/sneakers/right.png'),
+    back: require('../../../../assets/avatar/shoes/sneakers/back.png'),
+    left: require('../../../../assets/avatar/shoes/sneakers/left.png'),
   },
   boots: {
-    front: require('../../../assets/avatar/shoes/boots/front.png'),
-    right: require('../../../assets/avatar/shoes/boots/right.png'),
-    back: require('../../../assets/avatar/shoes/boots/back.png'),
-    left: require('../../../assets/avatar/shoes/boots/left.png'),
+    front: require('../../../../assets/avatar/shoes/boots/front.png'),
+    right: require('../../../../assets/avatar/shoes/boots/right.png'),
+    back: require('../../../../assets/avatar/shoes/boots/back.png'),
+    left: require('../../../../assets/avatar/shoes/boots/left.png'),
   },
   running: {
-    front: require('../../../assets/avatar/shoes/running/front.png'),
-    right: require('../../../assets/avatar/shoes/running/right.png'),
-    back: require('../../../assets/avatar/shoes/running/back.png'),
-    left: require('../../../assets/avatar/shoes/running/left.png'),
+    front: require('../../../../assets/avatar/shoes/running/front.png'),
+    right: require('../../../../assets/avatar/shoes/running/right.png'),
+    back: require('../../../../assets/avatar/shoes/running/back.png'),
+    left: require('../../../../assets/avatar/shoes/running/left.png'),
   },
 };
 
-export const avatarAccessoryAssets: Record<
-  Exclude<AvatarAccessoryType, 'none'>,
-  DirectionalAssets
+export const avatarAccessoryAssets: Partial<
+  Record<Exclude<AvatarAccessoryStyle, 'none'>, DirectionalAssets>
 > = {
   cap: {
-    front: require('../../../assets/avatar/accessories/cap/front.png'),
-    right: require('../../../assets/avatar/accessories/cap/right.png'),
-    back: require('../../../assets/avatar/accessories/cap/back.png'),
-    left: require('../../../assets/avatar/accessories/cap/left.png'),
+    front: require('../../../../assets/avatar/accessory/cap/front.png'),
+    right: require('../../../../assets/avatar/accessory/cap/right.png'),
+    back: require('../../../../assets/avatar/accessory/cap/back.png'),
+    left: require('../../../../assets/avatar/accessory/cap/left.png'),
   },
   glasses: {
-    front: require('../../../assets/avatar/accessories/glasses/front.png'),
-    right: require('../../../assets/avatar/accessories/glasses/right.png'),
-    back: require('../../../assets/avatar/accessories/glasses/back.png'),
-    left: require('../../../assets/avatar/accessories/glasses/left.png'),
+    front: require('../../../../assets/avatar/accessory/glasses/front.png'),
+    right: require('../../../../assets/avatar/accessory/glasses/right.png'),
+    back: require('../../../../assets/avatar/accessory/glasses/back.png'),
+    left: require('../../../../assets/avatar/accessory/glasses/left.png'),
   },
   backpack: {
-    front: require('../../../assets/avatar/accessories/backpack/front.png'),
-    right: require('../../../assets/avatar/accessories/backpack/right.png'),
-    back: require('../../../assets/avatar/accessories/backpack/back.png'),
-    left: require('../../../assets/avatar/accessories/backpack/left.png'),
+    front: require('../../../../assets/avatar/accessory/backpack/front.png'),
+    right: require('../../../../assets/avatar/accessory/backpack/right.png'),
+    back: require('../../../../assets/avatar/accessory/backpack/back.png'),
+    left: require('../../../../assets/avatar/accessory/backpack/left.png'),
   },
   watch: {
-    front: require('../../../assets/avatar/accessories/watch/front.png'),
-    right: require('../../../assets/avatar/accessories/watch/right.png'),
-    back: require('../../../assets/avatar/accessories/watch/back.png'),
-    left: require('../../../assets/avatar/accessories/watch/left.png'),
+    front: require('../../../../assets/avatar/accessory/watch/front.png'),
+    right: require('../../../../assets/avatar/accessory/watch/right.png'),
+    back: require('../../../../assets/avatar/accessory/watch/back.png'),
+    left: require('../../../../assets/avatar/accessory/watch/left.png'),
   },
   bandana: {
-    front: require('../../../assets/avatar/accessories/bandana/front.png'),
-    right: require('../../../assets/avatar/accessories/bandana/right.png'),
-    back: require('../../../assets/avatar/accessories/bandana/back.png'),
-    left: require('../../../assets/avatar/accessories/bandana/left.png'),
+    front: require('../../../../assets/avatar/accessory/bandana/front.png'),
+    right: require('../../../../assets/avatar/accessory/bandana/right.png'),
+    back: require('../../../../assets/avatar/accessory/bandana/back.png'),
+    left: require('../../../../assets/avatar/accessory/bandana/left.png'),
   },
 };
