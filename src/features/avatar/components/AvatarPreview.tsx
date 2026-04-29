@@ -1,192 +1,133 @@
-import React, {memo, useMemo} from 'react';
+import React from 'react';
 import {
   Image,
-  ImageSourcePropType,
-  StyleProp,
+  type ImageSourcePropType,
+  StyleSheet,
   View,
-  ViewStyle,
 } from 'react-native';
-
 import {
   avatarAccessoryAssets,
   avatarBodyAssets,
   avatarBottomAssets,
+  AvatarConfig,
+  AvatarDirection,
+  avatarFootwearAssets,
   avatarHairAssets,
-  avatarShoeAssets,
   avatarTopAssets,
+  defaultAvatarConfig,
 } from '../data/avatarSpriteManifest';
-import type {AvatarConfig, AvatarDirection} from '../types';
+import {
+  AvatarLayerKey,
+  BASE_SPRITE_CANVAS,
+  getAvatarLayerOrder,
+  getAvatarLayerTransforms,
+} from '../data/avatarLayerConfig';
 
 type AvatarPreviewProps = {
   config?: AvatarConfig;
   direction?: AvatarDirection;
   size?: number;
   showShadow?: boolean;
-  style?: StyleProp<ViewStyle>;
 };
 
-const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
-  bodyType: 'masculine',
-  skinTone: 'tone1',
-  hairStyle: 'spiky',
-  hairColor: 'blonde',
-  topStyle: 'shirt',
-  topColor: 'orange',
-  bottomStyle: 'pants',
-  bottomColor: 'black',
-  shoeStyle: 'sneakers',
-  shoeColor: 'white',
-  accessoryStyle: 'none',
-};
-
-function getDirectionalAsset<T extends string>(
-  assetMap: Record<string, Partial<Record<AvatarDirection, ImageSourcePropType>>>,
-  key: T | undefined,
-  direction: AvatarDirection,
-): ImageSourcePropType | undefined {
-  if (!key || key === 'none') {
-    return undefined;
-  }
-
-  const group = assetMap[String(key)];
-
-  if (!group) {
-    return undefined;
-  }
-
-  return group[direction] ?? group.front;
-}
-
-function SpriteLayer({
-  source,
-  size,
-  zIndex,
-}: {
-  source?: ImageSourcePropType;
-  size: number;
-  zIndex: number;
-}) {
-  if (!source) {
-    return null;
-  }
-
-  return (
-    <Image
-      source={source}
-      resizeMode="contain"
-      fadeDuration={0}
-      style={{
-        position: 'absolute',
-        width: size,
-        height: size,
-        left: 0,
-        top: 0,
-        zIndex,
-      }}
-    />
-  );
-}
-
-export const AvatarPreview = memo(function AvatarPreview({
-  config,
+export function AvatarPreview({
+  config = defaultAvatarConfig,
   direction = 'front',
   size = 180,
   showShadow = true,
-  style,
 }: AvatarPreviewProps) {
-  const safeConfig = useMemo<AvatarConfig>(() => {
-    return {
-      ...DEFAULT_AVATAR_CONFIG,
-      ...(config ?? {}),
-    };
-  }, [config]);
+  const safeConfig = config ?? defaultAvatarConfig;
+  const unit = size / BASE_SPRITE_CANVAS;
 
-  const body = getDirectionalAsset(
-    avatarBodyAssets,
-    safeConfig.bodyType,
-    direction,
-  );
+  const body = avatarBodyAssets[safeConfig.bodyType]?.[direction];
+  const hair = avatarHairAssets[safeConfig.hairType]?.[direction];
+  const top = avatarTopAssets[safeConfig.topType]?.[direction];
+  const bottom = avatarBottomAssets[safeConfig.bottomType]?.[direction];
+  const footwear = avatarFootwearAssets[safeConfig.footwearType]?.[direction];
 
-  const hair = getDirectionalAsset(
-    avatarHairAssets,
-    safeConfig.hairStyle,
-    direction,
-  );
+  const accessory =
+    safeConfig.accessoryType !== 'none'
+      ? avatarAccessoryAssets[safeConfig.accessoryType]?.[direction]
+      : undefined;
 
-  const top = getDirectionalAsset(
-    avatarTopAssets,
-    safeConfig.topStyle,
-    direction,
-  );
+  const layerSources: Record<AvatarLayerKey, ImageSourcePropType | undefined> = {
+    body,
+    bottom,
+    footwear,
+    top,
+    hair,
+    accessory,
+  };
 
-  const bottom = getDirectionalAsset(
-    avatarBottomAssets,
-    safeConfig.bottomStyle,
-    direction,
-  );
-
-  const shoes = getDirectionalAsset(
-    avatarShoeAssets,
-    safeConfig.shoeStyle,
-    direction,
-  );
-
-  const accessory = getDirectionalAsset(
-    avatarAccessoryAssets,
-    safeConfig.accessoryStyle,
-    direction,
-  );
+  const orderedLayers = getAvatarLayerOrder(safeConfig, direction);
+  const transforms = getAvatarLayerTransforms(safeConfig, direction);
 
   return (
-    <View
-      pointerEvents="none"
-      style={[
-        {
-          width: size,
-          height: size,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        style,
-      ]}>
-      {showShadow ? (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: Math.round(size * 0.12),
-            width: Math.round(size * 0.42),
-            height: Math.round(size * 0.1),
-            borderRadius: 999,
-            backgroundColor: 'rgba(0,0,0,0.38)',
-            transform: [{scaleX: 1.25}],
-          }}
-        />
-      ) : null}
-
-      <View
-        style={{
-          width: size,
-          height: size,
-          position: 'relative',
-          overflow: 'visible',
-        }}>
-        {/* Mochila u otros accesorios traseros deberían ir detrás del cuerpo.
-            Si después separas mochila frontal/trasera, podemos dividirla mejor. */}
-        {safeConfig.accessoryStyle === 'backpack' ? (
-          <SpriteLayer source={accessory} size={size} zIndex={1} />
+    <View style={[styles.root, {width: size, height: size}]}>
+      <View style={[styles.stage, {width: size, height: size}]}>
+        {showShadow ? (
+          <View
+            style={[
+              styles.shadow,
+              {
+                width: size * 0.44,
+                height: size * 0.10,
+                bottom: size * 0.06,
+                borderRadius: size * 0.05,
+              },
+            ]}
+          />
         ) : null}
 
-        <SpriteLayer source={body} size={size} zIndex={2} />
-        <SpriteLayer source={bottom} size={size} zIndex={3} />
-        <SpriteLayer source={shoes} size={size} zIndex={4} />
-        <SpriteLayer source={top} size={size} zIndex={5} />
-        <SpriteLayer source={hair} size={size} zIndex={6} />
+        {orderedLayers.map(layerKey => {
+          const source = layerSources[layerKey];
+          if (!source) {
+            return null;
+          }
 
-        {safeConfig.accessoryStyle !== 'none' &&
-        safeConfig.accessoryStyle !== 'backpack' ? (
-          <SpriteLayer source={accessory} size={size} zIndex={7} />
-        ) : null}
+          const transform = transforms[layerKey];
+
+          return (
+            <Image
+              key={layerKey}
+              source={source}
+              resizeMode="contain"
+              style={[
+                styles.layer,
+                {
+                  width: size,
+                  height: size,
+                  transform: [
+                    {translateX: transform.x * unit},
+                    {translateY: transform.y * unit},
+                    {scale: transform.scale},
+                  ],
+                },
+              ]}
+            />
+          );
+        })}
       </View>
     </View>
   );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stage: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  layer: {
+    position: 'absolute',
+  },
+  shadow: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+  },
 });
