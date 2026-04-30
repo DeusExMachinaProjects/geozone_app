@@ -10,6 +10,14 @@ import {
   avatarTopAssets,
 } from '../data/avatarAssets';
 
+import {
+  AvatarLayerKey,
+  FULL_PREVIEW_BODY_RATIO,
+  FULL_PREVIEW_BODY_TOP_RATIO,
+  getAvatarLayerOrder,
+  getAvatarLayerPlacements,
+} from '../data/avatarLayerConfig';
+
 import type {
   AvatarAccessoryStyle,
   AvatarBodyType,
@@ -37,6 +45,11 @@ type AvatarPreviewProps = {
   size?: number;
   showShadow?: boolean;
   previewMode?: AvatarPreviewMode;
+};
+
+type LayerRenderItem = {
+  key: AvatarLayerKey;
+  source: ImageSourcePropType;
 };
 
 export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
@@ -86,14 +99,10 @@ function resolveDirectionalAsset<T extends string>(
   return group[direction] ?? group.front ?? null;
 }
 
-function buildAvatarLayers(
-  rawConfig: Partial<AvatarConfig> | AvatarConfig | null | undefined,
-  rawDirection: AvatarDirection | undefined,
-  previewMode: AvatarPreviewMode,
-): ImageSourcePropType[] {
-  const config = normalizeAvatarConfig(rawConfig);
-  const direction = normalizeDirection(rawDirection);
-
+function getLayerSources(
+  config: AvatarConfig,
+  direction: AvatarDirection,
+): Partial<Record<AvatarLayerKey, ImageSourcePropType | null>> {
   const body = resolveDirectionalAsset(
     avatarBodyAssets,
     config.bodyType as AvatarBodyType,
@@ -133,30 +142,116 @@ function buildAvatarLayers(
           direction,
         );
 
+  return {
+    body,
+    hair,
+    top,
+    bottom,
+    shoes,
+    accessory,
+  };
+}
+
+function modeToLayerKey(previewMode: AvatarPreviewMode): AvatarLayerKey | null {
   switch (previewMode) {
     case 'body':
-      return body ? [body] : [];
-
+      return 'body';
     case 'hair':
-      return hair ? [hair] : [];
-
+      return 'hair';
     case 'top':
-      return top ? [top] : [];
-
+      return 'top';
     case 'bottom':
-      return bottom ? [bottom] : [];
-
+      return 'bottom';
     case 'shoes':
-      return shoes ? [shoes] : [];
-
+      return 'shoes';
     case 'accessory':
-      return accessory ? [accessory] : [];
-
+      return 'accessory';
     case 'full':
     default:
-      return [body, bottom, shoes, top, hair, accessory].filter(
-        Boolean,
-      ) as ImageSourcePropType[];
+      return null;
+  }
+}
+
+function buildFullLayerList(
+  config: AvatarConfig,
+  direction: AvatarDirection,
+): LayerRenderItem[] {
+  const layerSources = getLayerSources(config, direction);
+  const orderedLayers = getAvatarLayerOrder(config, direction);
+
+  return orderedLayers
+    .map(layerKey => {
+      const source = layerSources[layerKey];
+
+      if (!source) {
+        return null;
+      }
+
+      return {
+        key: layerKey,
+        source,
+      };
+    })
+    .filter(Boolean) as LayerRenderItem[];
+}
+
+function getSoloPreviewStyle(previewMode: AvatarPreviewMode, size: number) {
+  switch (previewMode) {
+    case 'body':
+      return {
+        width: size * 0.84,
+        height: size * 0.84,
+        left: size * 0.08,
+        top: size * 0.08,
+      };
+
+    case 'hair':
+      return {
+        width: size * 0.72,
+        height: size * 0.72,
+        left: size * 0.14,
+        top: size * 0.10,
+      };
+
+    case 'top':
+      return {
+        width: size * 0.72,
+        height: size * 0.72,
+        left: size * 0.14,
+        top: size * 0.12,
+      };
+
+    case 'bottom':
+      return {
+        width: size * 0.68,
+        height: size * 0.68,
+        left: size * 0.16,
+        top: size * 0.16,
+      };
+
+    case 'shoes':
+      return {
+        width: size * 0.58,
+        height: size * 0.58,
+        left: size * 0.21,
+        top: size * 0.22,
+      };
+
+    case 'accessory':
+      return {
+        width: size * 0.60,
+        height: size * 0.60,
+        left: size * 0.20,
+        top: size * 0.20,
+      };
+
+    default:
+      return {
+        width: size * 0.72,
+        height: size * 0.72,
+        left: size * 0.14,
+        top: size * 0.14,
+      };
   }
 }
 
@@ -167,39 +262,104 @@ export function AvatarPreview({
   showShadow = true,
   previewMode = 'full',
 }: AvatarPreviewProps) {
+  const safeConfig = normalizeAvatarConfig(config);
   const safeDirection = normalizeDirection(direction);
-  const layers = buildAvatarLayers(config, safeDirection, previewMode);
+
+  const layerSources = getLayerSources(safeConfig, safeDirection);
+
+  if (previewMode !== 'full') {
+    const singleLayerKey = modeToLayerKey(previewMode);
+
+    if (!singleLayerKey) {
+      return <View style={[styles.root, {width: size, height: size}]} />;
+    }
+
+    const source = layerSources[singleLayerKey];
+
+    if (!source) {
+      return <View style={[styles.root, {width: size, height: size}]} />;
+    }
+
+    const soloStyle = getSoloPreviewStyle(previewMode, size);
+
+    return (
+      <View style={[styles.root, {width: size, height: size}]}>
+        <View style={[styles.stage, {width: size, height: size}]}>
+          <Image
+            source={source}
+            resizeMode="contain"
+            style={[styles.layer, soloStyle]}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const layers = buildFullLayerList(safeConfig, safeDirection);
+  const placements = getAvatarLayerPlacements(safeConfig, safeDirection);
+
+  /**
+   * BODY = referencia principal del avatar.
+   */
+  const bodySize = size * FULL_PREVIEW_BODY_RATIO;
+  const bodyLeft = (size - bodySize) / 2;
+  const bodyTop = size * FULL_PREVIEW_BODY_TOP_RATIO;
 
   return (
-    <View style={[styles.container, {width: size, height: size}]}>
-      {showShadow ? (
-        <View
-          style={[
-            styles.shadow,
-            {
-              width: size * 0.42,
-              height: size * 0.12,
-              borderRadius: size * 0.06,
-              bottom: size * 0.12,
-            },
-          ]}
-        />
-      ) : null}
+    <View style={[styles.root, {width: size, height: size}]}>
+      <View style={[styles.stage, {width: size, height: size}]}>
+        {showShadow ? (
+          <View
+            style={[
+              styles.shadow,
+              {
+                width: size * 0.42,
+                height: size * 0.12,
+                borderRadius: size * 0.06,
+                bottom: size * 0.14,
+              },
+            ]}
+          />
+        ) : null}
 
-      {layers.map((source, index) => (
-        <Image
-          key={`${previewMode}-${safeDirection}-${index}`}
-          source={source}
-          resizeMode="contain"
-          style={[
-            styles.layer,
-            {
-              width: size,
-              height: size,
-            },
-          ]}
-        />
-      ))}
+        {layers.map(layer => {
+          const placement = placements[layer.key];
+
+          const layerSize =
+            layer.key === 'body'
+              ? bodySize
+              : bodySize * placement.sizeRatio;
+
+          const left =
+            layer.key === 'body'
+              ? bodyLeft
+              : bodyLeft +
+                (bodySize - layerSize) / 2 +
+                bodySize * placement.offsetX;
+
+          const top =
+            layer.key === 'body'
+              ? bodyTop
+              : bodyTop + bodySize * placement.offsetY;
+
+          return (
+            <Image
+              key={`${previewMode}-${safeDirection}-${layer.key}`}
+              source={layer.source}
+              resizeMode="contain"
+              style={[
+                styles.layer,
+                {
+                  width: layerSize,
+                  height: layerSize,
+                  left,
+                  top,
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -207,21 +367,25 @@ export function AvatarPreview({
 export default AvatarPreview;
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
+  root: {
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
   },
 
+  stage: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
   layer: {
     position: 'absolute',
-    left: 0,
-    top: 0,
   },
 
   shadow: {
     position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.34)',
+    backgroundColor: 'rgba(0,0,0,0.28)',
   },
 });
