@@ -1,20 +1,21 @@
 import {Platform} from 'react-native';
+
 import {API_BASE_URL} from '@env';
 import type {
   AuthApiResponse,
   PushTokenPayload,
   RegisterPayload,
 } from '../../features/auth/types/types';
+
 import {getOrCreateInstallationId} from './authStorage';
 
 function getApiPlatform() {
   return Platform.OS === 'ios' ? 'ios' : 'android';
 }
 
-async function parseJsonResponse(
-  response: Response,
-): Promise<AuthApiResponse> {
+async function parseJsonResponse(response: Response): Promise<AuthApiResponse> {
   const rawText = await response.text();
+
   let data: AuthApiResponse | null = null;
 
   try {
@@ -94,6 +95,16 @@ export async function registerRequest(
     genero: payload.genero,
     nick: payload.nick,
     subscrito: payload.subscrito ?? false,
+
+    /**
+     * Nuevos datos físicos para métricas.
+     * Mantengo nombres camelCase para que sean consistentes con tu API actual.
+     * En backend puedes mapearlos a PESO_KG, ALTURA_CM y PESO_OBJETIVO_KG.
+     */
+    pesoKg: payload.pesoKg,
+    alturaCm: payload.alturaCm,
+    pesoObjetivoKg: payload.pesoObjetivoKg ?? null,
+
     deviceId,
     platform: getApiPlatform(),
   });

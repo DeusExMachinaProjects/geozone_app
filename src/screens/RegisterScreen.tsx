@@ -24,7 +24,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
 type RegisterStep = 0 | 1 | 2 | 3 | 4;
 type GenderValue = 'M' | 'F' | 'O' | '';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 const eyeOnIcon = require('../components/ui/eye_on.png');
 const eyeOffIcon = require('../components/ui/eye_off.png');
@@ -80,6 +80,9 @@ export function RegisterScreen({navigation}: Props) {
   const [apellido, setApellido] = useState('');
   const [fecNacimiento, setFecNacimiento] = useState('');
   const [genero, setGenero] = useState<GenderValue>('');
+  const [pesoKg, setPesoKg] = useState('');
+  const [alturaCm, setAlturaCm] = useState('');
+  const [pesoObjetivoKg, setPesoObjetivoKg] = useState('');
 
   const progress = useMemo(() => `Paso ${step + 1}/${TOTAL_STEPS}`, [step]);
   const shouldScroll = contentHeight > viewportHeight + 8;
@@ -164,6 +167,25 @@ export function RegisterScreen({navigation}: Props) {
         );
         return false;
       }
+        function normalizeDecimalInput(value: string) {
+          return value.replace(',', '.').replace(/[^\d.]/g, '');
+        }
+
+        function parsePositiveNumber(value: string) {
+          const normalized = value.replace(',', '.').trim();
+
+          if (!normalized) {
+            return null;
+          }
+
+          const parsed = Number(normalized);
+
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            return null;
+          }
+
+          return parsed;
+        }
 
       return true;
     }
@@ -171,6 +193,54 @@ export function RegisterScreen({navigation}: Props) {
     if (step === 3) {
       if (!genero) {
         showDialog('Falta selección', 'Debes escoger tu género.');
+        return false;
+      }
+
+      return true;
+    }
+    if (step === 4) {
+      const parsedPesoKg = parsePositiveNumber(pesoKg);
+      const parsedAlturaCm = parsePositiveNumber(alturaCm);
+      const parsedPesoObjetivoKg = parsePositiveNumber(pesoObjetivoKg);
+
+      if (!parsedPesoKg || !parsedAlturaCm) {
+        showDialog(
+          'Datos físicos obligatorios',
+          'Debes ingresar tu peso actual y tu altura para generar estadísticas reales.',
+        );
+
+        return false;
+      }
+
+      if (parsedPesoKg < 30 || parsedPesoKg > 300) {
+        showDialog(
+          'Peso fuera de rango',
+          'Ingresa un peso válido entre 30 y 300 kg.',
+        );
+
+        return false;
+      }
+
+      if (parsedAlturaCm < 100 || parsedAlturaCm > 230) {
+        showDialog(
+          'Altura fuera de rango',
+          'Ingresa una altura válida entre 100 y 230 cm.',
+        );
+
+        return false;
+      }
+
+      if (
+        pesoObjetivoKg.trim() &&
+        (!parsedPesoObjetivoKg ||
+          parsedPesoObjetivoKg < 30 ||
+          parsedPesoObjetivoKg > 300)
+      ) {
+        showDialog(
+          'Peso objetivo inválido',
+          'Si ingresas un peso objetivo, debe estar entre 30 y 300 kg.',
+        );
+
         return false;
       }
 
@@ -198,13 +268,17 @@ export function RegisterScreen({navigation}: Props) {
       return;
     }
 
-    if (step < 4) {
+    if (step < 5) {
       setStep(prev => (prev + 1) as RegisterStep);
       return;
     }
 
     try {
       setIsLoading(true);
+
+      const parsedPesoKg = parsePositiveNumber(pesoKg);
+      const parsedAlturaCm = parsePositiveNumber(alturaCm);
+      const parsedPesoObjetivoKg = parsePositiveNumber(pesoObjetivoKg);
 
       const response = await registerRequest({
         email: email.trim().toLowerCase(),
@@ -215,6 +289,9 @@ export function RegisterScreen({navigation}: Props) {
         genero: genero as 'M' | 'F' | 'O',
         nick: nick.trim(),
         subscrito: false,
+        pesoKg: parsedPesoKg ?? 0,
+        alturaCm: parsedAlturaCm ?? 0,
+        pesoObjetivoKg: parsedPesoObjetivoKg,
       });
 
       if (response.code !== 0) {
@@ -466,8 +543,76 @@ export function RegisterScreen({navigation}: Props) {
       </Text>
     </>
   );
-
   const renderStep4 = () => (
+    <>
+      <Text style={styles.stepTitle}>Tus métricas físicas</Text>
+
+      <Text style={styles.stepSubtitle}>
+        Estos datos nos permiten calcular estadísticas de peso, progreso corporal,
+        calorías estimadas e indicadores de evolución en el tiempo.
+      </Text>
+
+      <View style={styles.fieldBlock}>
+        <Text style={styles.label}>Peso actual</Text>
+
+        <TextInput
+          value={pesoKg}
+          onChangeText={value => setPesoKg(normalizeDecimalInput(value))}
+          placeholder="Ejemplo: 82.5"
+          placeholderTextColor="rgba(255,255,255,0.35)"
+          style={styles.input}
+          keyboardType="decimal-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+
+        <Text style={styles.helper}>Ingresa tu peso actual en kilogramos.</Text>
+      </View>
+
+      <View style={styles.fieldBlock}>
+        <Text style={styles.label}>Altura</Text>
+
+        <TextInput
+          value={alturaCm}
+          onChangeText={value => setAlturaCm(normalizeDecimalInput(value))}
+          placeholder="Ejemplo: 176"
+          placeholderTextColor="rgba(255,255,255,0.35)"
+          style={styles.input}
+          keyboardType="decimal-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+
+        <Text style={styles.helper}>Ingresa tu altura en centímetros.</Text>
+      </View>
+
+      <View style={styles.fieldBlock}>
+        <Text style={styles.label}>Peso objetivo opcional</Text>
+
+        <TextInput
+          value={pesoObjetivoKg}
+          onChangeText={value =>
+            setPesoObjetivoKg(normalizeDecimalInput(value))
+          }
+          placeholder="Ejemplo: 76"
+          placeholderTextColor="rgba(255,255,255,0.35)"
+          style={styles.input}
+          keyboardType="decimal-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+
+        <Text style={styles.helper}>
+          No es obligatorio. Sirve para mostrar progreso hacia una meta.
+        </Text>
+      </View>
+    </>
+  );
+
+  const renderStep5 = () => (
     <>
       <Text style={styles.stepTitle}>Tu privacidad es importante</Text>
       <Text style={styles.stepSubtitle}>
@@ -479,6 +624,15 @@ export function RegisterScreen({navigation}: Props) {
         <Text style={styles.summaryTitle}>Resumen de tu cuenta</Text>
         <Text style={styles.summaryText}>Correo: {email.trim().toLowerCase()}</Text>
         <Text style={styles.summaryText}>Nick: {nick.trim()}</Text>
+        <Text style={styles.summaryText}>Peso actual: {pesoKg.trim()} kg</Text>
+
+        <Text style={styles.summaryText}>Altura: {alturaCm.trim()} cm</Text>
+
+        {pesoObjetivoKg.trim() ? (
+          <Text style={styles.summaryText}>
+            Peso objetivo: {pesoObjetivoKg.trim()} kg
+          </Text>
+        ) : null}
         <Text style={styles.summaryText}>
           Nombre: {nombre.trim()} {apellido.trim()}
         </Text>
@@ -509,7 +663,8 @@ export function RegisterScreen({navigation}: Props) {
         return renderStep3();
       case 4:
         return renderStep4();
-      default:
+      case 5:
+        return renderStep5();
         return null;
     }
   };
@@ -587,7 +742,7 @@ export function RegisterScreen({navigation}: Props) {
                     <ActivityIndicator color="#0A0A0A" />
                   ) : (
                     <Text style={styles.primaryButtonText}>
-                      {step === 4 ? 'Conquistar' : 'Continuar'}
+                      {step === 5 ? 'Conquistar' : 'Continuar'}
                     </Text>
                   )}
                 </Pressable>

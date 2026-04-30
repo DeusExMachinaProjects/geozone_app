@@ -7,6 +7,15 @@ export type LoginUser = {
   NICK: string | null;
   EXPERIENCIA: string;
   SUBSCRITO: number;
+
+  /**
+   * Campos físicos opcionales porque el backend puede no devolverlos todavía.
+   * Cuando actualices la API, idealmente deberían venir desde TB_USUARIOS
+   * o desde una tabla separada de perfil físico.
+   */
+  PESO_KG?: number | string | null;
+  ALTURA_CM?: number | string | null;
+  PESO_OBJETIVO_KG?: number | string | null;
 };
 
 export type AuthApiResponse = {
@@ -40,6 +49,14 @@ export type RegisterPayload = {
   genero: 'M' | 'F' | 'O';
   nick: string;
   subscrito?: boolean;
+
+  /**
+   * Datos necesarios para dashboard de peso, calorías estimadas,
+   * IMC inicial, progreso corporal y métricas de evolución.
+   */
+  pesoKg: number;
+  alturaCm: number;
+  pesoObjetivoKg?: number | null;
 };
 
 export type LoginPayload = {
