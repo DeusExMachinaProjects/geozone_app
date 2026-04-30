@@ -21,7 +21,7 @@ import {useAuth} from '../app/providers/AuthProvider';
 import {AppAlertModal} from '../components/AppAlertModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
-type RegisterStep = 0 | 1 | 2 | 3 | 4;
+type RegisterStep = 0 | 1 | 2 | 3 | 4 | 5;
 type GenderValue = 'M' | 'F' | 'O' | '';
 
 const TOTAL_STEPS = 6;
@@ -52,8 +52,58 @@ function isValidBirthDate(value: string) {
     return false;
   }
 
-  const date = new Date(`${value}T00:00:00`);
-  return !Number.isNaN(date.getTime());
+  const [yearText, monthText, dayText] = value.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (!year || !month || !day) {
+    return false;
+  }
+
+  const date = new Date(year, month - 1, day);
+
+  const isRealDate =
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day;
+
+  if (!isRealDate) {
+    return false;
+  }
+
+  const today = new Date();
+  const minYear = today.getFullYear() - 100;
+  const maxYear = today.getFullYear() - 10;
+
+  return year >= minYear && year <= maxYear;
+}
+
+function normalizeDecimalInput(value: string) {
+  const normalized = value.replace(',', '.').replace(/[^\d.]/g, '');
+  const parts = normalized.split('.');
+
+  if (parts.length <= 2) {
+    return normalized;
+  }
+
+  return `${parts[0]}.${parts.slice(1).join('')}`;
+}
+
+function parsePositiveNumber(value: string) {
+  const normalized = value.replace(',', '.').trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
 }
 
 export function RegisterScreen({navigation}: Props) {
@@ -80,6 +130,7 @@ export function RegisterScreen({navigation}: Props) {
   const [apellido, setApellido] = useState('');
   const [fecNacimiento, setFecNacimiento] = useState('');
   const [genero, setGenero] = useState<GenderValue>('');
+
   const [pesoKg, setPesoKg] = useState('');
   const [alturaCm, setAlturaCm] = useState('');
   const [pesoObjetivoKg, setPesoObjetivoKg] = useState('');
@@ -163,29 +214,10 @@ export function RegisterScreen({navigation}: Props) {
       if (!isValidBirthDate(fecNacimiento.trim())) {
         showDialog(
           'Fecha inválida',
-          'Usa el formato YYYY-MM-DD. Ejemplo: 1998-01-20',
+          'Usa el formato YYYY-MM-DD. Ejemplo: 1998-01-20. Debes tener al menos 10 años.',
         );
         return false;
       }
-        function normalizeDecimalInput(value: string) {
-          return value.replace(',', '.').replace(/[^\d.]/g, '');
-        }
-
-        function parsePositiveNumber(value: string) {
-          const normalized = value.replace(',', '.').trim();
-
-          if (!normalized) {
-            return null;
-          }
-
-          const parsed = Number(normalized);
-
-          if (!Number.isFinite(parsed) || parsed <= 0) {
-            return null;
-          }
-
-          return parsed;
-        }
 
       return true;
     }
@@ -198,6 +230,7 @@ export function RegisterScreen({navigation}: Props) {
 
       return true;
     }
+
     if (step === 4) {
       const parsedPesoKg = parsePositiveNumber(pesoKg);
       const parsedAlturaCm = parsePositiveNumber(alturaCm);
@@ -280,6 +313,14 @@ export function RegisterScreen({navigation}: Props) {
       const parsedAlturaCm = parsePositiveNumber(alturaCm);
       const parsedPesoObjetivoKg = parsePositiveNumber(pesoObjetivoKg);
 
+      if (!parsedPesoKg || !parsedAlturaCm) {
+        showDialog(
+          'Datos físicos obligatorios',
+          'Debes ingresar tu peso actual y tu altura.',
+        );
+        return;
+      }
+
       const response = await registerRequest({
         email: email.trim().toLowerCase(),
         password: password.trim(),
@@ -289,8 +330,8 @@ export function RegisterScreen({navigation}: Props) {
         genero: genero as 'M' | 'F' | 'O',
         nick: nick.trim(),
         subscrito: false,
-        pesoKg: parsedPesoKg ?? 0,
-        alturaCm: parsedAlturaCm ?? 0,
+        pesoKg: parsedPesoKg,
+        alturaCm: parsedAlturaCm,
         pesoObjetivoKg: parsedPesoObjetivoKg,
       });
 
@@ -478,6 +519,7 @@ export function RegisterScreen({navigation}: Props) {
           autoCapitalize="none"
           autoCorrect={false}
           editable={!isLoading}
+          maxLength={10}
         />
         <Text style={styles.helper}>
           Formato YYYY-MM-DD. Ejemplo: 1998-01-20
@@ -495,6 +537,7 @@ export function RegisterScreen({navigation}: Props) {
 
       <Pressable
         onPress={() => setGenero('M')}
+        disabled={isLoading}
         style={[
           styles.optionButton,
           genero === 'M' && styles.optionButtonActive,
@@ -510,6 +553,7 @@ export function RegisterScreen({navigation}: Props) {
 
       <Pressable
         onPress={() => setGenero('F')}
+        disabled={isLoading}
         style={[
           styles.optionButton,
           genero === 'F' && styles.optionButtonActive,
@@ -525,6 +569,7 @@ export function RegisterScreen({navigation}: Props) {
 
       <Pressable
         onPress={() => setGenero('O')}
+        disabled={isLoading}
         style={[
           styles.optionButton,
           genero === 'O' && styles.optionButtonActive,
@@ -543,6 +588,7 @@ export function RegisterScreen({navigation}: Props) {
       </Text>
     </>
   );
+
   const renderStep4 = () => (
     <>
       <Text style={styles.stepTitle}>Tus métricas físicas</Text>
@@ -622,8 +668,26 @@ export function RegisterScreen({navigation}: Props) {
 
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Resumen de tu cuenta</Text>
-        <Text style={styles.summaryText}>Correo: {email.trim().toLowerCase()}</Text>
+
+        <Text style={styles.summaryText}>
+          Correo: {email.trim().toLowerCase()}
+        </Text>
+
         <Text style={styles.summaryText}>Nick: {nick.trim()}</Text>
+
+        <Text style={styles.summaryText}>
+          Nombre: {nombre.trim()} {apellido.trim()}
+        </Text>
+
+        <Text style={styles.summaryText}>
+          Fecha de nacimiento: {fecNacimiento.trim()}
+        </Text>
+
+        <Text style={styles.summaryText}>
+          Género:{' '}
+          {genero === 'M' ? 'Hombre' : genero === 'F' ? 'Mujer' : 'Otro'}
+        </Text>
+
         <Text style={styles.summaryText}>Peso actual: {pesoKg.trim()} kg</Text>
 
         <Text style={styles.summaryText}>Altura: {alturaCm.trim()} cm</Text>
@@ -633,16 +697,6 @@ export function RegisterScreen({navigation}: Props) {
             Peso objetivo: {pesoObjetivoKg.trim()} kg
           </Text>
         ) : null}
-        <Text style={styles.summaryText}>
-          Nombre: {nombre.trim()} {apellido.trim()}
-        </Text>
-        <Text style={styles.summaryText}>
-          Fecha de nacimiento: {fecNacimiento.trim()}
-        </Text>
-        <Text style={styles.summaryText}>
-          Género:{' '}
-          {genero === 'M' ? 'Hombre' : genero === 'F' ? 'Mujer' : 'Otro'}
-        </Text>
       </View>
 
       <Text style={styles.helperCentered}>
@@ -655,16 +709,23 @@ export function RegisterScreen({navigation}: Props) {
     switch (step) {
       case 0:
         return renderStep0();
+
       case 1:
         return renderStep1();
+
       case 2:
         return renderStep2();
+
       case 3:
         return renderStep3();
+
       case 4:
         return renderStep4();
+
       case 5:
         return renderStep5();
+
+      default:
         return null;
     }
   };
