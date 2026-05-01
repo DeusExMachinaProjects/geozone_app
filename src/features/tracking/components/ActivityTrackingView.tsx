@@ -100,6 +100,20 @@ function getPrimaryActionIcon(status: UseActivityTrackingResult['status']) {
   return 'pause';
 }
 
+function splitMetricValue(value: string | number) {
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^([-+]?\d+(?:[.,]\d+)?)(?:\s*(.*))?$/);
+
+  if (!match) {
+    return {value: raw || '0', unit: ''};
+  }
+
+  return {
+    value: match[1],
+    unit: (match[2] ?? '').trim(),
+  };
+}
+
 export function ActivityTrackingView({
   tracking,
   activityType,
@@ -119,6 +133,9 @@ export function ActivityTrackingView({
   const activityTitle = getActivityTitle(activityType);
   const primaryActionLabel = getPrimaryActionLabel(tracking.status);
   const primaryActionIcon = getPrimaryActionIcon(tracking.status);
+  const speedMetric = splitMetricValue(tracking.speedKmh);
+  const distanceMetric = splitMetricValue(tracking.distanceKm);
+  const ascentMetric = splitMetricValue(tracking.ascentLabel);
 
   const importantNotifications = useMemo<ImportantNotification[]>(() => {
     const items: ImportantNotification[] = [];
@@ -336,8 +353,10 @@ export function ActivityTrackingView({
             <View style={[styles.statAccent, styles.speedAccent]} />
             <Text style={styles.statPillLabel}>VELOCIDAD</Text>
             <View style={styles.statValueRow}>
-              <Text style={styles.statPillValue}>{tracking.speedKmh}</Text>
-              <Text style={styles.statPillUnit}>km/h</Text>
+              <Text style={styles.statPillValue}>{speedMetric.value}</Text>
+              <Text style={styles.statPillUnit}>
+                {speedMetric.unit || 'km/h'}
+              </Text>
             </View>
           </View>
 
@@ -345,8 +364,10 @@ export function ActivityTrackingView({
             <View style={[styles.statAccent, styles.distanceAccent]} />
             <Text style={styles.statPillLabel}>DISTANCIA</Text>
             <View style={styles.statValueRow}>
-              <Text style={styles.statPillValue}>{tracking.distanceKm}</Text>
-              <Text style={styles.statPillUnit}>km</Text>
+              <Text style={styles.statPillValue}>{distanceMetric.value}</Text>
+              <Text style={styles.statPillUnit}>
+                {distanceMetric.unit || 'km'}
+              </Text>
             </View>
           </View>
 
@@ -362,17 +383,20 @@ export function ActivityTrackingView({
             <View style={[styles.statAccent, styles.ascentAccent]} />
             <Text style={styles.statPillLabel}>ASCENSO</Text>
             <View style={styles.statValueRow}>
-              <Text style={styles.statPillValue}>{tracking.ascentLabel}</Text>
-              <Text style={styles.statPillUnit}>m</Text>
+              <Text style={styles.statPillValue}>{ascentMetric.value}</Text>
+              <Text style={styles.statPillUnit}>{ascentMetric.unit || 'm'}</Text>
             </View>
           </View>
 
-          <View style={styles.statPill}>
+          <View style={[styles.statPill, styles.weatherPill]}>
             <View style={[styles.statAccent, styles.weatherAccent]} />
             <Text style={styles.statPillLabel}>CLIMA</Text>
 
             {tracking.weatherLoading && !tracking.weather ? (
-              <Text style={styles.statPillValue}>--°</Text>
+              <View style={styles.statValueRow}>
+                <Text style={styles.statPillValue}>--</Text>
+                <Text style={styles.statPillUnit}>°C</Text>
+              </View>
             ) : tracking.weather ? (
               <>
                 <View style={styles.statValueRow}>
@@ -381,7 +405,7 @@ export function ActivityTrackingView({
                   </Text>
                   <Text style={styles.statPillUnit}>°C</Text>
                 </View>
-                <Text style={styles.statMiniText}>
+                <Text style={styles.statMiniText} numberOfLines={2}>
                   {tracking.weather.conditionLabel}
                 </Text>
               </>

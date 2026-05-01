@@ -28,7 +28,7 @@ export const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: 'rgba(8, 12, 16, 0.48)',
+    backgroundColor: 'rgba(8, 12, 16, 0.58)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     flexDirection: 'row',
@@ -91,7 +91,7 @@ export const styles = StyleSheet.create({
   },
   statPill: {
     width: 98,
-    minHeight: 62,
+    minHeight: 68,
     marginBottom: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
@@ -106,6 +106,12 @@ export const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: {width: 0, height: 4},
     elevation: 8,
+  },
+  weatherPill: {
+    minHeight: 78,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+    backgroundColor: 'rgba(8, 12, 16, 0.68)',
   },
   statAccent: {
     width: 22,
