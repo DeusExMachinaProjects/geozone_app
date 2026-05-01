@@ -14,6 +14,7 @@ export type RootStackParamList = {
   PetTracking: undefined;
   Pet: undefined;
   Avatar: undefined;
+  DashboardMetas: undefined;
 };
 
 export type MainTabParamList = {

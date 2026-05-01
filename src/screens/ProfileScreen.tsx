@@ -1,8 +1,14 @@
 import React from 'react';
-import {StatusBar, Text, View} from 'react-native';
+import {Pressable, StatusBar, Text, View} from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {ScreenContainer} from '../components/ScreenContainer';
 import {AvatarSummaryCard} from '../features/avatar/components/AvatarSummaryCard';
+import {RootStackParamList} from '../navigation/types';
 import {styles} from '../theme/screens/ProfileScreen.styles';
+
+type ProfileNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type StatCardProps = {
   value: string;
@@ -19,9 +25,31 @@ function StatCard({value, label}: StatCardProps) {
 }
 
 export function ProfileScreen() {
+  const navigation = useNavigation<ProfileNavigationProp>();
+
   return (
-    <ScreenContainer scroll contentStyle={styles.content}>
+    <ScreenContainer contentStyle={styles.content}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
+
+      <Pressable
+        onPress={() => navigation.navigate('DashboardMetas')}
+        style={({pressed}) => [
+          styles.dashboardButton,
+          pressed && styles.dashboardButtonPressed,
+        ]}>
+        <View style={styles.dashboardButtonIcon}>
+          <Ionicons name="analytics-outline" size={22} color="#FFFFFF" />
+        </View>
+
+        <View style={styles.dashboardButtonTextBlock}>
+          <Text style={styles.dashboardButtonTitle}>Dashboard Metas</Text>
+          <Text style={styles.dashboardButtonSubtitle}>
+            Salud, calorías, peso, kilómetros y esfuerzo
+          </Text>
+        </View>
+
+        <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
+      </Pressable>
 
       <View style={styles.headerCard}>
         <View style={styles.avatar}>
@@ -38,7 +66,7 @@ export function ProfileScreen() {
 
         <View style={styles.pillsRow}>
           <View style={styles.infoPill}>
-            <Text style={styles.infoPillText}>🔥 4 días seguidos</Text>
+            <Text style={styles.infoPillText}>4 días seguidos</Text>
           </View>
 
           <View style={styles.infoPill}>
@@ -47,10 +75,12 @@ export function ProfileScreen() {
         </View>
       </View>
 
+      <AvatarSummaryCard />
+
       <View style={styles.statsRow}>
-        <StatCard value="27" label="Misiones" />
-        <StatCard value="14" label="Zonas" />
-        <StatCard value="4" label="Alianzas" />
+        <StatCard value="5" label="Actividades" />
+        <StatCard value="31.8" label="Km" />
+        <StatCard value="1.7" label="Km²" />
       </View>
 
       <View style={styles.mainCard}>
@@ -84,8 +114,6 @@ export function ProfileScreen() {
         </Text>
       </View>
 
-      <AvatarSummaryCard />
-
       <View style={styles.infoCard}>
         <Text style={styles.cardTitle}>Amigos</Text>
         <Text style={styles.cardText}>
@@ -95,13 +123,13 @@ export function ProfileScreen() {
 
         <View style={styles.friendsActionsRow}>
           <View style={styles.friendActionBox}>
-            <Text style={styles.friendActionValue}>+ Agregar</Text>
-            <Text style={styles.friendActionLabel}>Nuevo amigo</Text>
+            <Text style={styles.friendActionValue}>+</Text>
+            <Text style={styles.friendActionLabel}>Agregar Nuevo amigo</Text>
           </View>
 
           <View style={styles.friendActionBox}>
-            <Text style={styles.friendActionValue}>✉ Desafío</Text>
-            <Text style={styles.friendActionLabel}>Enviar reto</Text>
+            <Text style={styles.friendActionValue}>✉</Text>
+            <Text style={styles.friendActionLabel}>Desafío Enviar reto</Text>
           </View>
         </View>
       </View>

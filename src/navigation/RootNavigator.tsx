@@ -16,6 +16,7 @@ import {RideTrackingScreen} from '../screens/RideTrackingScreen';
 import {PetTrackingScreen} from '../screens/PetTrackingScreen';
 import {PetScreen} from '../screens/PetScreen';
 import AvatarScreen from '../screens/AvatarScreen';
+import {DashboardMetasScreen} from '../screens/DashboardMetasScreen';
 
 import {AppTabs} from './AppTabs';
 import {colors} from '../theme';
@@ -66,6 +67,7 @@ export function RootNavigator() {
             <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Auth" component={AuthScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="DashboardMetas" component={DashboardMetasScreen} />
           </>
         )}
       </Stack.Navigator>

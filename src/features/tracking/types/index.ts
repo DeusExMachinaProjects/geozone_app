@@ -6,7 +6,6 @@ export type TrackingPoint = {
   latitude: number;
   longitude: number;
   timestamp: number;
-
   accuracy?: number | null;
   altitude?: number | null;
   altitudeAccuracy?: number | null;

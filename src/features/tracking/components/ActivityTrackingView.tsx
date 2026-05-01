@@ -367,6 +367,28 @@ export function ActivityTrackingView({
             </View>
           </View>
         </View>
+        <View style={styles.statPill}>
+          <View style={[styles.statAccent, styles.weatherAccent]} />
+          <Text style={styles.statPillLabel}>CLIMA</Text>
+
+          {tracking.weatherLoading && !tracking.weather ? (
+            <Text style={styles.statPillValue}>--°</Text>
+          ) : tracking.weather ? (
+            <>
+              <View style={styles.statValueRow}>
+                <Text style={styles.statPillValue}>
+                  {Math.round(tracking.weather.temperatureC)}
+                </Text>
+                <Text style={styles.statPillUnit}>°C</Text>
+              </View>
+              <Text style={styles.statMiniText}>
+                {tracking.weather.conditionLabel}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.statMiniText}>Sin clima</Text>
+          )}
+        </View>
 
         {activeImportantNotification ? (
           <View
