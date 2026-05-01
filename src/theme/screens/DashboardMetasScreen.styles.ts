@@ -1,4 +1,5 @@
 import {StyleSheet} from 'react-native';
+import {spacing} from '..';
 
 export const styles = StyleSheet.create({
   screen: {
@@ -6,21 +7,18 @@ export const styles = StyleSheet.create({
     backgroundColor: '#050505',
   },
 
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 120,
-  },
-
-  headerRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    paddingTop: 54,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    backgroundColor: '#050505',
   },
 
   backButton: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 16,
     backgroundColor: '#111111',
     borderWidth: 1,
@@ -34,130 +32,219 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
 
-  kicker: {
-    color: '#FF6B52',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-
-  title: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
-  },
-
-  headerIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,107,82,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,82,0.28)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  heroCard: {
-    backgroundColor: '#111111',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#242424',
-    padding: 20,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  heroLabel: {
-    color: '#B9B9B9',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-
-  heroValue: {
-    color: '#FFFFFF',
-    fontSize: 42,
-    fontWeight: '900',
-    lineHeight: 46,
-  },
-
-  heroDetail: {
-    color: '#FF6B52',
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-
-  circleProgress: {
-    width: 98,
-    height: 98,
-    borderRadius: 49,
-    borderWidth: 10,
-    borderColor: '#FF6B52',
-    backgroundColor: '#181818',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  circleProgressValue: {
+  headerTitle: {
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '900',
   },
 
-  circleProgressLabel: {
+  headerSubtitle: {
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 130,
+  },
+
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+
+  centerStateTitle: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+
+  centerStateText: {
+    color: '#BEBEBE',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 20,
+  },
+
+  retryButton: {
+    marginTop: 18,
+    backgroundColor: '#FF6B52',
+    borderRadius: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  heroCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#111111',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,82,0.34)',
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+
+  heroOverline: {
+    color: '#FF6B52',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 25,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+
+  heroSubtitle: {
+    color: '#BEBEBE',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  progressCircle: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    borderWidth: 9,
+    borderColor: '#FF6B52',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#181818',
+  },
+
+  progressCircleValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  progressCircleLabel: {
     color: '#BEBEBE',
     fontSize: 11,
     fontWeight: '800',
-    textTransform: 'uppercase',
   },
 
-  goalCard: {
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+
+  metricCard: {
+    width: '48%',
     backgroundColor: '#111111',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#242424',
-    padding: 18,
-    marginBottom: 18,
+    borderColor: '#1F1F1F',
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
 
-  goalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  metricIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FF6B52',
     alignItems: 'center',
-    marginBottom: 14,
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+
+  metricLabel: {
+    color: '#BEBEBE',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+
+  metricValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+
+  metricValue: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+
+  metricUnit: {
+    color: '#FF6B52',
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 5,
+    marginBottom: 4,
+  },
+
+  sectionCard: {
+    backgroundColor: '#111111',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
 
   sectionTitle: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '900',
+    marginBottom: spacing.md,
   },
 
-  sectionBadge: {
-    color: '#FFB703',
+  weightRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+
+  weightItem: {
+    width: '31%',
+    backgroundColor: '#181818',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+
+  weightLabel: {
+    color: '#AFAFAF',
     fontSize: 11,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+
+  weightValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '900',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,183,3,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,183,3,0.26)',
-    overflow: 'hidden',
   },
 
   progressTrack: {
-    height: 12,
+    height: 11,
     borderRadius: 999,
-    backgroundColor: '#252525',
+    backgroundColor: '#272727',
     overflow: 'hidden',
-    marginBottom: 12,
   },
 
   progressFill: {
@@ -166,116 +253,75 @@ export const styles = StyleSheet.create({
     backgroundColor: '#FF6B52',
   },
 
-  goalText: {
-    color: '#C7C7C7',
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '600',
-  },
-
-  metricsGrid: {
+  typeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-
-  metricCard: {
-    width: '48%',
-    minHeight: 168,
-    backgroundColor: '#111111',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#242424',
-    padding: 16,
-    marginBottom: 14,
-  },
-
-  metricIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#202020',
   },
 
-  metricIcon_orange: {
-    backgroundColor: '#FF6B52',
-  },
-
-  metricIcon_gold: {
-    backgroundColor: '#E8A020',
-  },
-
-  metricIcon_blue: {
-    backgroundColor: '#367CFF',
-  },
-
-  metricIcon_green: {
-    backgroundColor: '#1C9B5F',
-  },
-
-  metricIcon_red: {
-    backgroundColor: '#F44336',
-  },
-
-  metricValue: {
+  typeTitle: {
     color: '#FFFFFF',
-    fontSize: 23,
+    fontSize: 15,
     fontWeight: '900',
-    marginBottom: 4,
+    textTransform: 'capitalize',
   },
 
-  metricLabel: {
-    color: '#CFCFCF',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-
-  metricDetail: {
-    color: '#898989',
+  typeSubtitle: {
+    color: '#AFAFAF',
     fontSize: 12,
-    lineHeight: 17,
     fontWeight: '700',
+    marginTop: 3,
   },
 
-  infoCard: {
+  typeCalories: {
+    color: '#FF6B52',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  recentRow: {
     flexDirection: 'row',
-    backgroundColor: '#111111',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#242424',
-    padding: 16,
-    marginTop: 2,
-    marginBottom: 14,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#202020',
   },
 
-  infoIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    backgroundColor: '#181818',
+  recentIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FF6B52',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
 
-  infoTextBlock: {
+  recentTextBlock: {
     flex: 1,
   },
 
-  infoTitle: {
+  recentTitle: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
-    marginBottom: 6,
+    textTransform: 'capitalize',
   },
 
-  infoText: {
-    color: '#BEBEBE',
+  recentSubtitle: {
+    color: '#AFAFAF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  emptyText: {
+    color: '#AFAFAF',
     fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '600',
+    fontWeight: '700',
+    lineHeight: 19,
   },
 });

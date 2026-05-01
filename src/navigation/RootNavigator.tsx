@@ -61,13 +61,13 @@ export function RootNavigator() {
             <Stack.Screen name="PetTracking" component={PetTrackingScreen} />
             <Stack.Screen name="Pet" component={PetScreen} />
             <Stack.Screen name="Avatar" component={AvatarScreen} />
+            <Stack.Screen name="DashboardMetas" component={DashboardMetasScreen} />
           </>
         ) : (
           <>
             <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Auth" component={AuthScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="DashboardMetas" component={DashboardMetasScreen} />
           </>
         )}
       </Stack.Navigator>

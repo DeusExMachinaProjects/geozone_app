@@ -1,6 +1,8 @@
-import React, {useMemo} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
+  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   Text,
@@ -8,303 +10,302 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {RootStackParamList} from '../navigation/types';
-import {useAuth} from '../app/providers/AuthProvider';
+
+import type {RootStackParamList} from '../navigation/types';
+import {
+  getDashboardMetas,
+  type DashboardMetasData,
+} from '../services/dashboard/dashboardApi';
 import {styles} from '../theme/screens/DashboardMetasScreen.styles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DashboardMetas'>;
 
-type MetricCardProps = {
-  icon: string;
-  label: string;
-  value: string;
-  detail: string;
-  tone?: 'orange' | 'gold' | 'blue' | 'green' | 'red';
-};
+function formatDuration(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
 
-function toNumber(value: unknown): number | null {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
   }
 
-  return parsed;
-}
-
-function calculateAge(fecNacimiento?: string | null) {
-  if (!fecNacimiento) {
-    return null;
-  }
-
-  const birthDate = new Date(`${fecNacimiento}T00:00:00`);
-
-  if (Number.isNaN(birthDate.getTime())) {
-    return null;
-  }
-
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
-  ) {
-    age -= 1;
-  }
-
-  return age;
-}
-
-function calculateBmi(weightKg: number | null, heightCm: number | null) {
-  if (!weightKg || !heightCm) {
-    return null;
-  }
-
-  const heightM = heightCm / 100;
-  return weightKg / (heightM * heightM);
-}
-
-function getBmiLabel(bmi: number | null) {
-  if (!bmi) {
-    return 'Sin datos';
-  }
-
-  if (bmi < 18.5) {
-    return 'Bajo peso';
-  }
-
-  if (bmi < 25) {
-    return 'Normal';
-  }
-
-  if (bmi < 30) {
-    return 'Sobrepeso';
-  }
-
-  return 'Obesidad';
-}
-
-function getEstimatedCaloriesLabel(weightKg: number | null) {
-  if (!weightKg) {
-    return 'Sin peso registrado';
-  }
-
-  /**
-   * Estimación temporal visual.
-   * Luego debe venir del historial real de actividades.
-   */
-  const estimatedKm = 31.8;
-  const estimatedHours = 4.2;
-  const averageMet = 7.5;
-  const calories = Math.round(averageMet * weightKg * estimatedHours);
-
-  return `${calories.toLocaleString('es-CL')} kcal`;
+  return `${minutes}m`;
 }
 
 function MetricCard({
   icon,
   label,
   value,
-  detail,
-  tone = 'orange',
-}: MetricCardProps) {
+  unit,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  unit?: string;
+}) {
   return (
     <View style={styles.metricCard}>
-      <View style={[styles.metricIcon, styles[`metricIcon_${tone}`]]}>
-        <Ionicons name={icon} size={20} color="#FFFFFF" />
+      <View style={styles.metricIcon}>
+        <Ionicons name={icon} size={18} color="#FFFFFF" />
       </View>
 
-      <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricDetail}>{detail}</Text>
+
+      <View style={styles.metricValueRow}>
+        <Text style={styles.metricValue}>{value}</Text>
+        {unit ? <Text style={styles.metricUnit}>{unit}</Text> : null}
+      </View>
     </View>
   );
 }
 
 export function DashboardMetasScreen({navigation}: Props) {
-  const {session} = useAuth();
-  const user = session?.user;
+  const [data, setData] = useState<DashboardMetasData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const pesoKg = toNumber(user?.PESO_KG);
-  const alturaCm = toNumber(user?.ALTURA_CM);
-  const pesoObjetivoKg = toNumber(user?.PESO_OBJETIVO_KG);
-  const edad = calculateAge(user?.FEC_NACIMIENTO);
+  const loadDashboard = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    try {
+      if (mode === 'initial') {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
 
-  const bmi = useMemo(() => calculateBmi(pesoKg, alturaCm), [pesoKg, alturaCm]);
+      setErrorMessage(null);
 
-  const pesoPendiente = useMemo(() => {
-    if (!pesoKg || !pesoObjetivoKg) {
-      return null;
+      const response = await getDashboardMetas();
+
+      if (response.code !== 0 || !response.data) {
+        setErrorMessage(response.msgrsp || 'No se pudo cargar el dashboard.');
+        return;
+      }
+
+      setData(response.data);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo cargar el dashboard.';
+
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  }, []);
 
-    return pesoKg - pesoObjetivoKg;
-  }, [pesoKg, pesoObjetivoKg]);
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const progressPercent = useMemo(() => {
-    if (!pesoKg || !pesoObjetivoKg) {
-      return 0;
-    }
-
-    const diff = Math.abs(pesoKg - pesoObjetivoKg);
-
-    if (diff === 0) {
-      return 100;
-    }
-
-    /**
-     * Temporal hasta tener PESO_INICIAL_KG real.
-     * Con historial real, esto debe salir de TB_USUARIO_PESO_HISTORIAL.
-     */
-    const estimatedInitialDiff = Math.max(diff + 4, 1);
-    return Math.min(100, Math.round(((estimatedInitialDiff - diff) / estimatedInitialDiff) * 100));
-  }, [pesoKg, pesoObjetivoKg]);
+    return data?.weight.targetProgressPercent ?? 0;
+  }, [data?.weight.targetProgressPercent]);
 
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}>
-            <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-          </Pressable>
+      <View style={styles.header}>
+        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+        </Pressable>
 
-          <View style={styles.headerTextBlock}>
-            <Text style={styles.kicker}>GeoZone Health</Text>
-            <Text style={styles.title}>Dashboard Metas</Text>
-          </View>
-
-          <View style={styles.headerIcon}>
-            <Ionicons name="analytics-outline" size={22} color="#FF6B52" />
-          </View>
-        </View>
-
-        <View style={styles.heroCard}>
-          <View>
-            <Text style={styles.heroLabel}>Estado actual</Text>
-            <Text style={styles.heroValue}>
-              {pesoKg ? `${pesoKg.toFixed(1)} kg` : '-- kg'}
-            </Text>
-            <Text style={styles.heroDetail}>
-              {pesoObjetivoKg
-                ? `Meta: ${pesoObjetivoKg.toFixed(1)} kg`
-                : 'Agrega peso objetivo para calcular avance'}
-            </Text>
-          </View>
-
-          <View style={styles.circleProgress}>
-            <Text style={styles.circleProgressValue}>{progressPercent}%</Text>
-            <Text style={styles.circleProgressLabel}>meta</Text>
-          </View>
-        </View>
-
-        <View style={styles.goalCard}>
-          <View style={styles.goalHeader}>
-            <Text style={styles.sectionTitle}>Progreso corporal</Text>
-            <Text style={styles.sectionBadge}>Estimado</Text>
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, {width: `${progressPercent}%`}]} />
-          </View>
-
-          <Text style={styles.goalText}>
-            {pesoPendiente === null
-              ? 'Para calcular avance real falta registrar peso objetivo e historial de peso.'
-              : pesoPendiente > 0
-                ? `Te faltan aproximadamente ${pesoPendiente.toFixed(
-                    1,
-                  )} kg para llegar a tu meta.`
-                : `Ya estás en tu peso objetivo o por debajo de la meta configurada.`}
+        <View style={styles.headerTextBlock}>
+          <Text style={styles.headerTitle}>Dashboard Metas</Text>
+          <Text style={styles.headerSubtitle}>
+            Salud, calorías, peso, kilómetros y esfuerzo
           </Text>
         </View>
+      </View>
 
-        <View style={styles.metricsGrid}>
-          <MetricCard
-            icon="body-outline"
-            label="IMC"
-            value={bmi ? bmi.toFixed(1) : '--'}
-            detail={getBmiLabel(bmi)}
-            tone="orange"
-          />
-
-          <MetricCard
-            icon="flame-outline"
-            label="Calorías"
-            value={getEstimatedCaloriesLabel(pesoKg)}
-            detail="Estimación semanal"
-            tone="red"
-          />
-
-          <MetricCard
-            icon="walk-outline"
-            label="Kilómetros"
-            value="31.8 km"
-            detail="Total semanal temporal"
-            tone="blue"
-          />
-
-          <MetricCard
-            icon="trending-up-outline"
-            label="Ascenso"
-            value="1.240 m"
-            detail="Subida acumulada"
-            tone="green"
-          />
-
-          <MetricCard
-            icon="speedometer-outline"
-            label="Esfuerzo"
-            value="Medio"
-            detail="Según ritmo y duración"
-            tone="gold"
-          />
-
-          <MetricCard
-            icon="calendar-outline"
-            label="Edad"
-            value={edad ? `${edad}` : '--'}
-            detail="Usada para métricas"
-            tone="blue"
-          />
+      {loading ? (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color="#FF6B52" />
+          <Text style={styles.centerStateText}>Cargando métricas...</Text>
         </View>
+      ) : errorMessage ? (
+        <View style={styles.centerState}>
+          <Ionicons name="alert-circle-outline" size={34} color="#FF6B52" />
+          <Text style={styles.centerStateTitle}>No se pudo cargar</Text>
+          <Text style={styles.centerStateText}>{errorMessage}</Text>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Ionicons name="information-circle-outline" size={22} color="#FFB703" />
-          </View>
-
-          <View style={styles.infoTextBlock}>
-            <Text style={styles.infoTitle}>Precisión de calorías</Text>
-            <Text style={styles.infoText}>
-              Sin frecuencia cardíaca, las calorías deben mostrarse como una
-              estimación. GeoZone puede mejorar el cálculo usando peso, ritmo,
-              pendiente, duración y clima, pero no debe venderlo como exacto.
-            </Text>
-          </View>
+          <Pressable
+            style={styles.retryButton}
+            onPress={() => loadDashboard('initial')}>
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </Pressable>
         </View>
+      ) : data ? (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadDashboard('refresh')}
+              tintColor="#FF6B52"
+            />
+          }>
+          <View style={styles.heroCard}>
+            <View>
+              <Text style={styles.heroOverline}>Progreso corporal</Text>
+              <Text style={styles.heroTitle}>
+                {data.weight.weightLostKg > 0
+                  ? `${data.weight.weightLostKg.toFixed(1)} kg menos`
+                  : 'Comienza tu progreso'}
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                Peso actual:{' '}
+                {data.weight.currentWeightKg
+                  ? `${data.weight.currentWeightKg.toFixed(1)} kg`
+                  : 'sin registro'}
+              </Text>
+            </View>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Ionicons name="cloud-outline" size={22} color="#59C3C3" />
+            <View style={styles.progressCircle}>
+              <Text style={styles.progressCircleValue}>
+                {Math.round(progressPercent)}%
+              </Text>
+              <Text style={styles.progressCircleLabel}>meta</Text>
+            </View>
           </View>
 
-          <View style={styles.infoTextBlock}>
-            <Text style={styles.infoTitle}>Clima y esfuerzo</Text>
-            <Text style={styles.infoText}>
-              La temperatura, lluvia, humedad y viento se pueden usar como factor
-              de ajuste para calorías. Esto ayuda, pero el dato más importante
-              seguirá siendo el peso del usuario y el historial real de rutas.
-            </Text>
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              icon="flame-outline"
+              label="Calorías"
+              value={String(data.totals.totalCalories)}
+              unit="kcal"
+            />
+            <MetricCard
+              icon="map-outline"
+              label="Kilómetros"
+              value={data.totals.totalDistanceKm.toFixed(1)}
+              unit="km"
+            />
+            <MetricCard
+              icon="time-outline"
+              label="Tiempo"
+              value={formatDuration(data.totals.totalDurationSeconds)}
+            />
+            <MetricCard
+              icon="trending-up-outline"
+              label="Ascenso"
+              value={data.totals.totalAscentM.toFixed(0)}
+              unit="m"
+            />
+            <MetricCard
+              icon="speedometer-outline"
+              label="Vel. media"
+              value={data.totals.avgSpeedKmh.toFixed(1)}
+              unit="km/h"
+            />
+            <MetricCard
+              icon="heart-outline"
+              label="IMC"
+              value={data.user.imc ? data.user.imc.toFixed(1) : '--'}
+            />
           </View>
-        </View>
-      </ScrollView>
+
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Peso y objetivo</Text>
+
+            <View style={styles.weightRow}>
+              <View style={styles.weightItem}>
+                <Text style={styles.weightLabel}>Inicial</Text>
+                <Text style={styles.weightValue}>
+                  {data.weight.initialWeightKg
+                    ? `${data.weight.initialWeightKg.toFixed(1)} kg`
+                    : '--'}
+                </Text>
+              </View>
+
+              <View style={styles.weightItem}>
+                <Text style={styles.weightLabel}>Actual</Text>
+                <Text style={styles.weightValue}>
+                  {data.weight.currentWeightKg
+                    ? `${data.weight.currentWeightKg.toFixed(1)} kg`
+                    : '--'}
+                </Text>
+              </View>
+
+              <View style={styles.weightItem}>
+                <Text style={styles.weightLabel}>Meta</Text>
+                <Text style={styles.weightValue}>
+                  {data.weight.targetWeightKg
+                    ? `${data.weight.targetWeightKg.toFixed(1)} kg`
+                    : '--'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {width: `${Math.min(100, Math.max(0, progressPercent))}%`},
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Actividades por tipo</Text>
+
+            {data.byType.length ? (
+              data.byType.map(item => (
+                <View key={item.type} style={styles.typeRow}>
+                  <View>
+                    <Text style={styles.typeTitle}>{item.type}</Text>
+                    <Text style={styles.typeSubtitle}>
+                      {item.totalActivities} actividades · {item.distanceKm.toFixed(1)} km
+                    </Text>
+                  </View>
+
+                  <Text style={styles.typeCalories}>{item.calories} kcal</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>
+                Todavía no tienes actividades guardadas.
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Últimas rutas</Text>
+
+            {data.recentActivities.length ? (
+              data.recentActivities.map(item => (
+                <View key={item.idRun} style={styles.recentRow}>
+                  <View style={styles.recentIcon}>
+                    <Ionicons name="navigate-outline" size={17} color="#FFFFFF" />
+                  </View>
+
+                  <View style={styles.recentTextBlock}>
+                    <Text style={styles.recentTitle}>
+                      {item.tipo} · {item.distanceKm.toFixed(2)} km
+                    </Text>
+                    <Text style={styles.recentSubtitle}>
+                      {formatDuration(item.durationSeconds)} · {item.calories} kcal ·{' '}
+                      {item.temperatureC !== null
+                        ? `${Math.round(item.temperatureC)}°C`
+                        : 'sin clima'}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>
+                Cuando finalices una actividad aparecerá aquí.
+              </Text>
+            )}
+          </View>
+        </ScrollView>
+      ) : null}
     </View>
   );
 }
