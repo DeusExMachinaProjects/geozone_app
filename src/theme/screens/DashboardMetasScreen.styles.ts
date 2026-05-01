@@ -90,13 +90,21 @@ export const styles = StyleSheet.create({
 
   heroCard: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#111111',
     borderRadius: 28,
     borderWidth: 1,
     borderColor: 'rgba(255,107,82,0.34)',
-    padding: spacing.lg,
+    paddingVertical: 22,
+    paddingLeft: spacing.lg,
+    paddingRight: 16,
     marginBottom: spacing.lg,
+    overflow: 'hidden',
+  },
+  heroTextBlock: {
+    flex: 1,
+    paddingRight: 8,
   },
 
   heroOverline: {
@@ -121,14 +129,15 @@ export const styles = StyleSheet.create({
   },
 
   progressCircle: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    borderWidth: 9,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 8,
     borderColor: '#FF6B52',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#181818',
+    marginLeft: 12,
   },
 
   progressCircleValue: {
