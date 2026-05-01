@@ -2,6 +2,7 @@ import {Alert, AppState} from 'react-native';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {CurrentWeather} from '../../../services/weather/weatherApi';
 import {getCurrentWeatherByLocation} from '../../../services/weather/weatherApi';
+import {finishTrackingSession} from '../../../services/tracking/trackingApi';
 
 import {
   getNativeTrackingSnapshot,
@@ -156,6 +157,56 @@ function buildSummaryData(
     speed: formatSpeedKmh(avgSpeedMps),
     ascent: formatAscentMeters(snapshot.ascentMeters),
   };
+}
+
+function toValidNumber(value: unknown): number | null {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getRouteSpeedStats(route: TrackingPoint[], durationMs: number, distanceMeters: number) {
+  const speedsMps = route
+    .map(point => getPointNumber(point, 'speed'))
+    .filter((value): value is number => value !== null && value >= 0);
+
+  const avgSpeedMps = durationMs > 0 ? distanceMeters / (durationMs / 1000) : 0;
+
+  if (speedsMps.length === 0) {
+    return {
+      velocidadMinKmh: avgSpeedMps * 3.6,
+      velocidadPromKmh: avgSpeedMps * 3.6,
+      velocidadMaxKmh: avgSpeedMps * 3.6,
+    };
+  }
+
+  const minMps = Math.min(...speedsMps);
+  const maxMps = Math.max(...speedsMps);
+
+  return {
+    velocidadMinKmh: minMps * 3.6,
+    velocidadPromKmh: avgSpeedMps * 3.6,
+    velocidadMaxKmh: maxMps * 3.6,
+  };
+}
+
+function getPointNumber(point: TrackingPoint, key: string): number | null {
+  const value = (point as unknown as Record<string, unknown>)[key];
+
+  return toValidNumber(value);
+}
+
+function normalizeRouteForApi(route: TrackingPoint[]) {
+  return route.map((point, index) => ({
+    secuencia: index + 1,
+    latitude: Number(point.latitude),
+    longitude: Number(point.longitude),
+    timestamp: getPointNumber(point, 'timestamp'),
+    speedMps: getPointNumber(point, 'speed'),
+    altitudeMeters:
+      getPointNumber(point, 'altitude') ?? getPointNumber(point, 'altitudeMeters'),
+    heading: getPointNumber(point, 'heading'),
+  }));
 }
 
 export function useActivityTracking({
@@ -358,12 +409,53 @@ useEffect(() => {
 
     try {
       const finalSnapshot = normalizeSnapshot(await stopNativeTracking());
+      const speedStats = getRouteSpeedStats(
+        finalSnapshot.route,
+        finalSnapshot.durationMs,
+        finalSnapshot.distanceMeters,
+      );
 
       hydrateSnapshot(finalSnapshot);
       setSummaryData(buildSummaryData(finalSnapshot));
       setSummaryVisible(true);
       setExitModalVisible(false);
       setErrorMessage(null);
+
+      try {
+        await finishTrackingSession({
+          activityType,
+          startedAt: finalSnapshot.startedAt
+            ? new Date(finalSnapshot.startedAt).toISOString()
+            : new Date(Date.now() - finalSnapshot.durationMs).toISOString(),
+          finishedAt: new Date().toISOString(),
+          distanceMeters: finalSnapshot.distanceMeters,
+          durationMs: finalSnapshot.durationMs,
+          ascentMeters: finalSnapshot.ascentMeters,
+          velocidadMinKmh: speedStats.velocidadMinKmh,
+          velocidadPromKmh: speedStats.velocidadPromKmh,
+          velocidadMaxKmh: speedStats.velocidadMaxKmh,
+          temperatureC: weather?.temperatureC ?? null,
+          apparentTemperatureC: weather?.apparentTemperatureC ?? null,
+          humidityPercent: weather?.humidityPercent ?? null,
+          windSpeedKmh: weather?.windSpeedKmh ?? null,
+          precipitationMm: weather?.precipitationMm ?? null,
+          weatherCode: weather?.weatherCode ?? null,
+          weatherCondition: weather?.condition ?? null,
+          weatherConditionLabel: weather?.conditionLabel ?? null,
+          route: normalizeRouteForApi(finalSnapshot.route),
+        });
+      } catch (saveError) {
+        const saveMessage =
+          saveError instanceof Error
+            ? saveError.message
+            : 'La actividad finalizó, pero no se pudo guardar en el servidor.';
+
+        setErrorMessage(saveMessage);
+
+        if (__DEV__) {
+          console.warn('[tracking] No se pudo guardar la actividad', saveError);
+        }
+      }
     } catch (error) {
       const message =
         error instanceof Error
@@ -373,7 +465,13 @@ useEffect(() => {
       setErrorMessage(message);
       Alert.alert('Actividad', message);
     }
-  }, [hydrateSnapshot, isPreparing, summaryVisible]);
+  }, [
+    activityType,
+    hydrateSnapshot,
+    isPreparing,
+    summaryVisible,
+    weather,
+  ]);
 
   const openExitModal = useCallback(() => {
     setExitModalVisible(true);
@@ -461,5 +559,8 @@ useEffect(() => {
     handlePauseResume,
     handleFinish,
     refresh,
+    weather,
+    weatherLoading,
+    weatherError,
   };
 }
