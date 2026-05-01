@@ -479,4 +479,15 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
+  weatherAccent: {
+    backgroundColor: '#59C3C3',
+  },
+
+  statMiniText: {
+    color: '#BFC7D1',
+    fontSize: 8,
+    fontWeight: '700',
+    marginTop: 3,
+    textAlign: 'center',
+  },
 });

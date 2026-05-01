@@ -224,4 +224,48 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  dashboardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111111',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,82,0.32)',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+
+  dashboardButtonPressed: {
+    opacity: 0.9,
+    transform: [{scale: 0.99}],
+  },
+
+  dashboardButtonIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: '#FF6B52',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  dashboardButtonTextBlock: {
+    flex: 1,
+  },
+
+  dashboardButtonTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+    marginBottom: 3,
+  },
+
+  dashboardButtonSubtitle: {
+    color: '#BEBEBE',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
 });

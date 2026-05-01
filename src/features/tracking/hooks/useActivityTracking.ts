@@ -1,5 +1,7 @@
 import {Alert, AppState} from 'react-native';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import type {CurrentWeather} from '../../../services/weather/weatherApi';
+import {getCurrentWeatherByLocation} from '../../../services/weather/weatherApi';
 
 import {
   getNativeTrackingSnapshot,
@@ -63,6 +65,9 @@ export type UseActivityTrackingResult = {
   handlePauseResume: () => Promise<void>;
   handleFinish: () => Promise<void>;
   refresh: () => Promise<void>;
+  weather: CurrentWeather | null;
+  weatherLoading: boolean;
+  weatherError: string | null;
 };
 
 const EMPTY_SNAPSHOT: ActivityTrackingSnapshot = {
@@ -166,6 +171,10 @@ export function useActivityTracking({
     null,
   );
   const [exitModalVisible, setExitModalVisible] = useState(false);
+  const [weather, setWeather] = useState<CurrentWeather | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const lastWeatherFetchRef = useRef(0);
 
   const appStateRef = useRef(AppState.currentState);
 
@@ -261,6 +270,62 @@ export function useActivityTracking({
 
     return () => clearInterval(interval);
   }, [refresh, summaryVisible]);
+
+useEffect(() => {
+  const lastLocation = snapshot.lastLocation;
+
+  if (!lastLocation) {
+    return;
+  }
+
+  const now = Date.now();
+  const fiveMinutesMs = 5 * 60 * 1000;
+
+  if (now - lastWeatherFetchRef.current < fiveMinutesMs && weather) {
+    return;
+  }
+
+  let isMounted = true;
+
+  async function loadWeather() {
+    try {
+      setWeatherLoading(true);
+      setWeatherError(null);
+
+      const nextWeather = await getCurrentWeatherByLocation(lastLocation);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (nextWeather) {
+        setWeather(nextWeather);
+        lastWeatherFetchRef.current = Date.now();
+      }
+    } catch (error) {
+      if (!isMounted) {
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo obtener el clima actual.';
+
+      setWeatherError(message);
+    } finally {
+      if (isMounted) {
+        setWeatherLoading(false);
+      }
+    }
+  }
+
+  void loadWeather();
+
+  return () => {
+    isMounted = false;
+  };
+}, [snapshot.lastLocation, weather]);
 
   const handlePauseResume = useCallback(async () => {
     if (isPreparing || summaryVisible) {
