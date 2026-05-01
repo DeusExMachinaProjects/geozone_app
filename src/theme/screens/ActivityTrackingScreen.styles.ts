@@ -108,10 +108,10 @@ export const styles = StyleSheet.create({
     elevation: 8,
   },
   weatherPill: {
-    minHeight: 78,
-    paddingHorizontal: 8,
+    minHeight: 68,
+    paddingHorizontal: 10,
     paddingVertical: 9,
-    backgroundColor: 'rgba(8, 12, 16, 0.68)',
+    backgroundColor: 'rgba(8, 12, 16, 0.48)',
   },
   statAccent: {
     width: 22,
@@ -490,10 +490,12 @@ export const styles = StyleSheet.create({
   },
 
   statMiniText: {
-    color: '#BFC7D1',
-    fontSize: 8,
-    fontWeight: '700',
-    marginTop: 3,
+    color: '#FFFFFF',
+    fontSize: 7,
+    fontWeight: '800',
+    marginTop: 4,
     textAlign: 'center',
+    lineHeight: 10,
+    opacity: 0.88,
   },
 });

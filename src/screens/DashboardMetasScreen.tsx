@@ -150,7 +150,7 @@ export function DashboardMetasScreen({navigation}: Props) {
             />
           }>
           <View style={styles.heroCard}>
-            <View>
+            <View style={styles.heroTextBlock}>
               <Text style={styles.heroOverline}>Progreso corporal</Text>
               <Text style={styles.heroTitle}>
                 {data.weight.weightLostKg > 0
