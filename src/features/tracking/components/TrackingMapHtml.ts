@@ -128,22 +128,61 @@ export function buildTrackingMapHtml(payload: TrackingMapPayload) {
     }
 
     .maplibregl-ctrl-logo {
-      opacity: 0.28;
-      transform: scale(0.75);
+      opacity: 0.18;
+      transform: scale(0.52);
       transform-origin: left bottom;
     }
 
+    .maplibregl-ctrl-bottom-left {
+      bottom: 4px !important;
+      left: 4px !important;
+    }
+
+    .maplibregl-ctrl-bottom-right {
+      bottom: 4px !important;
+      right: 4px !important;
+    }
+
     .maplibregl-ctrl-attrib {
-      opacity: 0.38;
-      font-size: 8px;
-      background: rgba(255, 255, 255, 0.36) !important;
-      color: rgba(0, 0, 0, 0.55) !important;
-      border-radius: 8px 0 0 0;
-      padding: 1px 4px;
+      opacity: 0.32;
+      font-size: 7px !important;
+      line-height: 10px !important;
+      background: rgba(255, 255, 255, 0.18) !important;
+      color: rgba(0, 0, 0, 0.42) !important;
+      border-radius: 999px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      min-height: 18px !important;
+      box-shadow: none !important;
     }
 
     .maplibregl-ctrl-attrib a {
-      color: rgba(0, 0, 0, 0.55) !important;
+      color: rgba(0, 0, 0, 0.42) !important;
+    }
+
+    .maplibregl-ctrl-attrib-inner {
+      max-width: 1px !important;
+      width: 1px !important;
+      height: 1px !important;
+      opacity: 0 !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+      pointer-events: none !important;
+    }
+
+    .maplibregl-ctrl-attrib-button {
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      min-height: 18px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      opacity: 0.7 !important;
+      background-size: 13px 13px !important;
+    }
+
+    .maplibregl-ctrl-attrib.maplibregl-compact {
+      min-height: 18px !important;
     }
 
     .gz-user-marker {
@@ -664,7 +703,9 @@ export function buildTrackingMapHtml(payload: TrackingMapPayload) {
           zoom: lastPayload.currentLocation ? 17.2 : 15.2,
           pitch: 58,
           bearing: -25,
-          attributionControl: true,
+          attributionControl: {
+            compact: true,
+          },
           logoPosition: 'bottom-left',
           interactive: false,
           maxPitch: 68
