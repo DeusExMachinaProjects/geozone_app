@@ -15,6 +15,9 @@ export type RootStackParamList = {
   Pet: undefined;
   Avatar: undefined;
   DashboardMetas: undefined;
+  RouteDetail: {
+    idRun: number;
+  };
 };
 
 export type MainTabParamList = {

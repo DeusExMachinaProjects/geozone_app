@@ -65,36 +65,39 @@ export function DashboardMetasScreen({navigation}: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
-    try {
-      if (mode === 'initial') {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
+  const loadDashboard = useCallback(
+    async (mode: 'initial' | 'refresh' = 'initial') => {
+      try {
+        if (mode === 'initial') {
+          setLoading(true);
+        } else {
+          setRefreshing(true);
+        }
+
+        setErrorMessage(null);
+
+        const response = await getDashboardMetas();
+
+        if (response.code !== 0 || !response.data) {
+          setErrorMessage(response.msgrsp || 'No se pudo cargar el dashboard.');
+          return;
+        }
+
+        setData(response.data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo cargar el dashboard.';
+
+        setErrorMessage(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      setErrorMessage(null);
-
-      const response = await getDashboardMetas();
-
-      if (response.code !== 0 || !response.data) {
-        setErrorMessage(response.msgrsp || 'No se pudo cargar el dashboard.');
-        return;
-      }
-
-      setData(response.data);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo cargar el dashboard.';
-
-      setErrorMessage(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadDashboard();
@@ -258,10 +261,11 @@ export function DashboardMetasScreen({navigation}: Props) {
             {data.byType.length ? (
               data.byType.map(item => (
                 <View key={item.type} style={styles.typeRow}>
-                  <View>
+                  <View style={styles.typeTextBlock}>
                     <Text style={styles.typeTitle}>{item.type}</Text>
                     <Text style={styles.typeSubtitle}>
-                      {item.totalActivities} actividades · {item.distanceKm.toFixed(1)} km
+                      {item.totalActivities} actividades ·{' '}
+                      {item.distanceKm.toFixed(1)} km
                     </Text>
                   </View>
 
@@ -280,7 +284,12 @@ export function DashboardMetasScreen({navigation}: Props) {
 
             {data.recentActivities.length ? (
               data.recentActivities.map(item => (
-                <View key={item.idRun} style={styles.recentRow}>
+                <Pressable
+                  key={item.idRun}
+                  style={styles.recentRow}
+                  onPress={() =>
+                    navigation.navigate('RouteDetail', {idRun: item.idRun})
+                  }>
                   <View style={styles.recentIcon}>
                     <Ionicons name="navigate-outline" size={17} color="#FFFFFF" />
                   </View>
@@ -290,13 +299,20 @@ export function DashboardMetasScreen({navigation}: Props) {
                       {item.tipo} · {item.distanceKm.toFixed(2)} km
                     </Text>
                     <Text style={styles.recentSubtitle}>
-                      {formatDuration(item.durationSeconds)} · {item.calories} kcal ·{' '}
+                      {formatDuration(item.durationSeconds)} · {item.calories}{' '}
+                      kcal ·{' '}
                       {item.temperatureC !== null
                         ? `${Math.round(item.temperatureC)}°C`
                         : 'sin clima'}
                     </Text>
                   </View>
-                </View>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color="rgba(255,255,255,0.42)"
+                  />
+                </Pressable>
               ))
             ) : (
               <Text style={styles.emptyText}>
