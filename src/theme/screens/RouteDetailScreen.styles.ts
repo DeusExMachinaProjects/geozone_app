@@ -88,73 +88,84 @@ export const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  heroCard: {
+  mapCard: {
+    height: 300,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,82,0.28)',
+    marginBottom: spacing.md,
+  },
+
+  summaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#111111',
-    borderRadius: 28,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: 'rgba(255,107,82,0.34)',
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    minHeight: 132,
+    borderColor: '#1F1F1F',
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
 
-  heroTextBlock: {
-    flex: 1,
-    paddingRight: 14,
-  },
-
-  heroOverline: {
-    color: '#FF6B52',
-    fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 6,
-  },
-
-  heroSubtitle: {
-    color: '#BEBEBE',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  progressCircle: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    borderWidth: 8,
-    borderColor: '#FF6B52',
+  activityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#FF6B52',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#181818',
+    marginRight: 12,
   },
 
-  progressCircleValue: {
+  summaryTextBlock: {
+    flex: 1,
+  },
+
+  activityTitle: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
+    fontWeight: '900',
+    textTransform: 'capitalize',
+  },
+
+  activityDate: {
+    color: '#AFAFAF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+
+  distancePill: {
+    minWidth: 72,
+    borderRadius: 18,
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,82,0.24)',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+
+  distancePillValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: '900',
   },
 
-  progressCircleLabel: {
-    color: '#BEBEBE',
+  distancePillUnit: {
+    color: '#FF6B52',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
+    marginTop: 1,
   },
 
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
 
   metricCard: {
@@ -221,122 +232,59 @@ export const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
 
-  weightRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-
-  weightItem: {
-    width: '31%',
-    backgroundColor: '#181818',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-
-  weightLabel: {
-    color: '#AFAFAF',
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-
-  weightValue: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-
-  progressTrack: {
-    height: 11,
-    borderRadius: 999,
-    backgroundColor: '#272727',
-    overflow: 'hidden',
-  },
-
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#FF6B52',
-  },
-
-  typeRow: {
+  weatherRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#202020',
   },
 
-  typeTextBlock: {
-    flex: 1,
-    paddingRight: 10,
-  },
-
-  typeTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-    textTransform: 'capitalize',
-  },
-
-  typeSubtitle: {
-    color: '#AFAFAF',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-
-  typeCalories: {
-    color: '#FF6B52',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#202020',
-  },
-
-  recentIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+  weatherMainIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 20,
     backgroundColor: '#FF6B52',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
 
-  recentTextBlock: {
+  weatherTextBlock: {
     flex: 1,
-    paddingRight: 8,
   },
 
-  recentTitle: {
+  weatherTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '900',
-    textTransform: 'capitalize',
   },
 
-  recentSubtitle: {
+  weatherSubtitle: {
     color: '#AFAFAF',
     fontSize: 12,
     fontWeight: '700',
-    marginTop: 3,
+    marginTop: 5,
+    lineHeight: 18,
   },
 
-  emptyText: {
+  techRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#202020',
+  },
+
+  techLabel: {
     color: '#AFAFAF',
     fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 19,
+    fontWeight: '800',
+  },
+
+  techValue: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+    maxWidth: '58%',
+    textAlign: 'right',
   },
 });

@@ -34,18 +34,64 @@ export type FinishTrackingPayload = {
   route: TrackingRoutePointPayload[];
 };
 
-export type FinishTrackingResponse = {
+export type TrackingDetailRoutePoint = {
+  secuencia?: number;
+  latitude: number;
+  longitude: number;
+  timestamp?: number | null;
+  speedMps?: number | null;
+  speed?: number | null;
+  altitudeMeters?: number | null;
+  heading?: number | null;
+};
+
+export type TrackingDetailData = {
+  idRun: number;
+  idRuta: number;
+  activityType: TrackingActivityType;
+  activityLabel: string;
+  startedAt: string;
+  finishedAt: string;
+
+  tipo?: string;
+  inicio?: string;
+  fin?: string;
+
+  distanceMeters: number;
+  durationSeconds: number;
+  ascentMeters: number;
+  calories: number;
+
+  speedMinKmh: number;
+  speedAvgKmh: number;
+  speedMaxKmh: number;
+
+  weather: {
+    temperatureC: number | null;
+    conditionLabel: string | null;
+    humidityPercent: number | null;
+    windSpeedKmh: number | null;
+  };
+
+  route: TrackingDetailRoutePoint[];
+  summary?: unknown;
+};
+
+type ApiResponse = {
   code?: number;
   msgrsp?: string;
   message?: string;
-  idRun?: number;
-  idRuta?: number;
+  data?: unknown;
   [key: string]: unknown;
 };
 
-async function parseJsonResponse(
-  response: Response,
-): Promise<FinishTrackingResponse> {
+export type TrackingDetailResponse = {
+  code: number;
+  msgrsp: string;
+  data?: TrackingDetailData;
+};
+
+async function parseJsonResponse(response: Response): Promise<ApiResponse> {
   const rawText = await response.text();
 
   if (!rawText) {
@@ -56,7 +102,7 @@ async function parseJsonResponse(
   }
 
   try {
-    return JSON.parse(rawText) as FinishTrackingResponse;
+    return JSON.parse(rawText) as ApiResponse;
   } catch {
     return {
       code: 1,
@@ -65,118 +111,65 @@ async function parseJsonResponse(
   }
 }
 
-function getErrorMessage(data: FinishTrackingResponse, fallback: string) {
+function getErrorMessage(data: ApiResponse, fallback: string) {
   return data.msgrsp || data.message || fallback;
 }
 
-function toFiniteNumber(value: unknown, fallback = 0) {
-  const numberValue = Number(value);
+async function getAuthHeaders() {
+  const session = await loadAuthSession();
 
-  if (!Number.isFinite(numberValue)) {
-    return fallback;
+  if (!session?.accessToken) {
+    throw new Error('No hay sesión activa.');
   }
 
-  return numberValue;
-}
-
-function normalizeRoute(route: TrackingRoutePointPayload[]) {
-  return route
-    .filter(point => {
-      return (
-        Number.isFinite(Number(point.latitude)) &&
-        Number.isFinite(Number(point.longitude))
-      );
-    })
-    .map((point, index) => ({
-      secuencia: Number.isFinite(Number(point.secuencia))
-        ? Number(point.secuencia)
-        : index + 1,
-      latitude: Number(point.latitude),
-      longitude: Number(point.longitude),
-      timestamp:
-        point.timestamp === null || point.timestamp === undefined
-          ? null
-          : toFiniteNumber(point.timestamp, Date.now()),
-      speedMps:
-        point.speedMps === null || point.speedMps === undefined
-          ? null
-          : toFiniteNumber(point.speedMps, 0),
-      altitudeMeters:
-        point.altitudeMeters === null || point.altitudeMeters === undefined
-          ? null
-          : toFiniteNumber(point.altitudeMeters, 0),
-      heading:
-        point.heading === null || point.heading === undefined
-          ? null
-          : toFiniteNumber(point.heading, 0),
-    }));
-}
-
-function normalizeNullableNumber(value: unknown) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const numberValue = Number(value);
-
-  return Number.isFinite(numberValue) ? numberValue : null;
-}
-
-function normalizePayload(payload: FinishTrackingPayload): FinishTrackingPayload {
   return {
-    activityType: payload.activityType,
-    startedAt: payload.startedAt,
-    finishedAt: payload.finishedAt,
-
-    distanceMeters: toFiniteNumber(payload.distanceMeters, 0),
-    durationMs: toFiniteNumber(payload.durationMs, 0),
-    ascentMeters: toFiniteNumber(payload.ascentMeters, 0),
-
-    velocidadMinKmh: toFiniteNumber(payload.velocidadMinKmh, 0),
-    velocidadPromKmh: toFiniteNumber(payload.velocidadPromKmh, 0),
-    velocidadMaxKmh: toFiniteNumber(payload.velocidadMaxKmh, 0),
-
-    temperatureC: normalizeNullableNumber(payload.temperatureC),
-    apparentTemperatureC: normalizeNullableNumber(payload.apparentTemperatureC),
-    humidityPercent: normalizeNullableNumber(payload.humidityPercent),
-    windSpeedKmh: normalizeNullableNumber(payload.windSpeedKmh),
-    precipitationMm: normalizeNullableNumber(payload.precipitationMm),
-    weatherCode: normalizeNullableNumber(payload.weatherCode),
-
-    weatherCondition: payload.weatherCondition ?? null,
-    weatherConditionLabel: payload.weatherConditionLabel ?? null,
-
-    route: normalizeRoute(payload.route ?? []),
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.accessToken}`,
   };
 }
 
 export async function finishTrackingSession(payload: FinishTrackingPayload) {
-  const session = await loadAuthSession();
-
-  if (!session?.accessToken) {
-    throw new Error('No hay sesión activa para guardar la actividad.');
-  }
-
-  const cleanPayload = normalizePayload(payload);
+  const headers = await getAuthHeaders();
 
   const response = await fetch(`${API_BASE_URL}/api/tracking/finish`, {
     method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.accessToken}`,
-    },
-    body: JSON.stringify(cleanPayload),
+    headers,
+    body: JSON.stringify(payload),
   });
 
   const data = await parseJsonResponse(response);
+
   const apiCode = Number(data.code ?? 0);
 
-  if (!response.ok || (apiCode !== 0 && apiCode !== 200 && apiCode !== 201)) {
+  if (!response.ok || (apiCode !== 0 && apiCode !== 200)) {
     throw new Error(
       getErrorMessage(data, 'No se pudo guardar la actividad en el servidor.'),
     );
   }
 
   return data;
+}
+
+export async function getTrackingDetail(
+  idRun: number,
+): Promise<TrackingDetailResponse> {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${API_BASE_URL}/api/tracking/${idRun}`, {
+    method: 'GET',
+    headers,
+  });
+
+  const data = await parseJsonResponse(response);
+
+  const apiCode = Number(data.code ?? 0);
+
+  if (!response.ok || apiCode !== 0) {
+    throw new Error(
+      getErrorMessage(data, 'No se pudo cargar el detalle de la ruta.'),
+    );
+  }
+
+  return data as TrackingDetailResponse;
 }
