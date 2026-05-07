@@ -117,9 +117,13 @@ export type UseActivityTrackingResult = {
   closeSummary: () => void;
 };
 
-export function useActivityTracking(
-  activityType: ActivityType,
-): UseActivityTrackingResult {
+type UseActivityTrackingParams = {
+  activityType: ActivityType;
+};
+
+export function useActivityTracking({
+  activityType,
+}: UseActivityTrackingParams): UseActivityTrackingResult {
   const [status, setStatus] = useState<RunStatus>('preparing');
   const [route, setRoute] = useState<TrackingPoint[]>([]);
   const [currentLocation, setCurrentLocation] = useState<TrackingPoint | null>(

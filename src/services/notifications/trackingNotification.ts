@@ -1,5 +1,7 @@
 import type {ActivityType} from '../../features/tracking/types';
 
+type BackgroundOptionsActivityType = ActivityType | undefined | null;
+
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
   run: 'Carrera en curso',
   ride: 'Bicicleta en curso',
@@ -18,17 +20,31 @@ const ACTIVITY_LINKS: Record<ActivityType, string> = {
   pet: 'geozone://tracking/pet',
 };
 
-export function buildTrackingBackgroundOptions(activityType: ActivityType) {
+function normalizeActivityType(
+  activityType: BackgroundOptionsActivityType,
+): ActivityType {
+  if (activityType === 'run' || activityType === 'ride' || activityType === 'pet') {
+    return activityType;
+  }
+
+  return 'run';
+}
+
+export function buildTrackingBackgroundOptions(
+  activityType: BackgroundOptionsActivityType,
+) {
+  const safeActivityType = normalizeActivityType(activityType);
+
   return {
     taskName: 'GeoZone Tracking',
-    taskTitle: ACTIVITY_LABELS[activityType],
-    taskDesc: ACTIVITY_DESCRIPTIONS[activityType],
+    taskTitle: ACTIVITY_LABELS[safeActivityType],
+    taskDesc: ACTIVITY_DESCRIPTIONS[safeActivityType],
     taskIcon: {
       name: 'ic_launcher',
       type: 'mipmap',
     },
     color: '#FF6B52',
-    linkingURI: ACTIVITY_LINKS[activityType],
+    linkingURI: ACTIVITY_LINKS[safeActivityType],
     parameters: {
       delayMs: 15000,
     },
@@ -37,7 +53,7 @@ export function buildTrackingBackgroundOptions(activityType: ActivityType) {
 }
 
 export function buildTrackingBackgroundUpdate(params: {
-  activityType: ActivityType;
+  activityType: BackgroundOptionsActivityType;
   distanceKm?: string;
   elapsedLabel?: string;
   speedKmh?: string;
@@ -47,6 +63,8 @@ export function buildTrackingBackgroundUpdate(params: {
   const speed = params.speedKmh ? ` · ${params.speedKmh} km/h` : '';
 
   return {
-    taskDesc: `${distance}${time}${speed}. Toca para volver y finalizar.`,
+    taskTitle: ACTIVITY_LABELS[normalizeActivityType(params.activityType)],
+    taskDesc: `${distance}${time}${speed}.
+Toca para volver y finalizar.`,
   };
 }
