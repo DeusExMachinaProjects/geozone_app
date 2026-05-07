@@ -1,566 +1,459 @@
-import {Alert, AppState} from 'react-native';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {CurrentWeather} from '../../../services/weather/weatherApi';
-import {getCurrentWeatherByLocation} from '../../../services/weather/weatherApi';
-import {finishTrackingSession} from '../../../services/tracking/trackingApi';
-
+import type {ActivityType, RunStatus, TrackingPoint} from '../types';
 import {
-  getNativeTrackingSnapshot,
-  openNativeLocationSettings,
-  pauseNativeTracking,
-  resumeNativeTracking,
+  getLastTrackingSnapshot,
   startNativeTracking,
   stopNativeTracking,
-  type ActivityTrackingSnapshot,
 } from '../../../services/location';
-
-import type {ActivityType, TrackingPoint} from '../../tracking/types';
-
 import {
-  formatAscentMeters,
-  formatDistanceKm,
-  formatElapsedTime,
-  formatSpeedKmh,
-} from '../utils/trackingCalculations';
+  startTrackingBackgroundRunner,
+  stopTrackingBackgroundRunner,
+} from '../../../services/location/backgroundRunner';
+import {getCurrentWeatherByLocation} from '../../../services/weather/weatherApi';
+import type {CurrentWeather} from '../../../services/weather/weatherApi';
+import {finishTrackingSession} from '../../../services/tracking/trackingApi';
 
-type UseActivityTrackingOptions = {
-  activityType: ActivityType;
-  onClose?: () => void;
-};
+const TICK_MS = 1000;
+const SNAPSHOT_MS = 1500;
+const MIN_DISTANCE_METERS_TO_APPEND = 2;
+const MIN_ACCURACY_METERS = 80;
+const MAX_REASONABLE_SPEED_MPS = 18;
+const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 
-type TrackingUiStatus = 'idle' | 'preparing' | 'running' | 'paused' | 'finished';
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
 
-type TrackingSummaryData = {
-  time: string;
-  distance: string;
-  speed: string;
-  ascent: string;
-};
+function distanceBetweenMeters(a: TrackingPoint, b: TrackingPoint) {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function formatElapsed(milliseconds: number) {
+  const safeMs = Math.max(0, milliseconds);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map(value => String(value).padStart(2, '0'))
+    .join(':');
+}
+
+function isAccurateEnough(point: TrackingPoint) {
+  if (point.accuracy === null || point.accuracy === undefined) {
+    return true;
+  }
+
+  return point.accuracy <= MIN_ACCURACY_METERS;
+}
+
+function shouldAppendPoint(route: TrackingPoint[], point: TrackingPoint) {
+  if (!isAccurateEnough(point)) {
+    return false;
+  }
+
+  if (route.length === 0) {
+    return true;
+  }
+
+  const previous = route[route.length - 1];
+  const distance = distanceBetweenMeters(previous, point);
+  const elapsedSeconds = Math.max(1, (point.timestamp - previous.timestamp) / 1000);
+  const speedMps = distance / elapsedSeconds;
+
+  if (speedMps > MAX_REASONABLE_SPEED_MPS) {
+    return false;
+  }
+
+  return distance >= MIN_DISTANCE_METERS_TO_APPEND;
+}
+
+function normalizeNumber(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 export type UseActivityTrackingResult = {
-  activityType: ActivityType;
+  status: RunStatus;
   route: TrackingPoint[];
   currentLocation: TrackingPoint | null;
-  currentPoint: TrackingPoint | null;
-  status: TrackingUiStatus;
-  nativeStatus: ActivityTrackingSnapshot['status'];
-  errorMessage: string | null;
+  elapsedMs: number;
+  elapsedLabel: string;
   distanceMeters: number;
-  durationMs: number;
-  ascentMeters: number;
-  currentAltitudeMeters: number | null;
-  currentSpeedMps: number;
   distanceKm: string;
   speedKmh: string;
-  elapsedLabel: string;
+  speedMinKmh: number;
+  speedPromKmh: number;
+  speedMaxKmh: number;
+  ascentMeters: number;
   ascentLabel: string;
-  summaryVisible: boolean;
-  summaryTitle: string;
-  summaryData: TrackingSummaryData | null;
-  exitModalVisible: boolean;
-  openExitModal: () => void;
-  closeExitModal: () => void;
-  confirmExit: () => Promise<void>;
-  closeSummary: () => void;
-  openLocationSettings: () => void;
-  handlePauseResume: () => Promise<void>;
-  handleFinish: () => Promise<void>;
-  refresh: () => Promise<void>;
   weather: CurrentWeather | null;
   weatherLoading: boolean;
   weatherError: string | null;
+  errorMessage: string | null;
+  showSummary: boolean;
+  summary: {
+    time: string;
+    distance: string;
+    speed: string;
+    ascent: string;
+    weather: string;
+  };
+  finishLoading: boolean;
+  finishError: string | null;
+  handlePauseResume: () => void;
+  handleFinish: () => Promise<void>;
+  closeSummary: () => void;
 };
 
-const EMPTY_SNAPSHOT: ActivityTrackingSnapshot = {
-  activityType: null,
-  status: 'idle',
-  startedAt: null,
-  distanceMeters: 0,
-  durationMs: 0,
-  currentSpeedMps: 0,
-  ascentMeters: 0,
-  currentAltitudeMeters: null,
-  route: [],
-  lastLocation: null,
-  errorCode: null,
-};
-
-function normalizeSnapshot(
-  snapshot?: Partial<ActivityTrackingSnapshot> | null,
-): ActivityTrackingSnapshot {
-  return {
-    activityType: snapshot?.activityType ?? null,
-    status: snapshot?.status ?? 'idle',
-    startedAt: snapshot?.startedAt ?? null,
-    distanceMeters: Number(snapshot?.distanceMeters ?? 0),
-    durationMs: Number(snapshot?.durationMs ?? 0),
-    currentSpeedMps: Number(snapshot?.currentSpeedMps ?? 0),
-    ascentMeters: Number(snapshot?.ascentMeters ?? 0),
-    currentAltitudeMeters: snapshot?.currentAltitudeMeters ?? null,
-    route: Array.isArray(snapshot?.route) ? snapshot.route : [],
-    lastLocation: snapshot?.lastLocation ?? null,
-    errorCode: snapshot?.errorCode ?? null,
-  };
-}
-
-function mapUiStatus(
-  nativeStatus: ActivityTrackingSnapshot['status'],
-  isPreparing: boolean,
-  summaryVisible: boolean,
-): TrackingUiStatus {
-  if (summaryVisible) {
-    return 'finished';
-  }
-
-  if (isPreparing) {
-    return 'preparing';
-  }
-
-  if (nativeStatus === 'paused') {
-    return 'paused';
-  }
-
-  if (nativeStatus === 'tracking') {
-    return 'running';
-  }
-
-  if (nativeStatus === 'finished') {
-    return 'finished';
-  }
-
-  return 'idle';
-}
-
-function getSummaryTitle(activityType: ActivityType): string {
-  switch (activityType) {
-    case 'run':
-      return 'Resumen de carrera';
-    case 'ride':
-      return 'Resumen de pedaleo';
-    case 'pet':
-      return 'Resumen de paseo';
-    default:
-      return 'Resumen de actividad';
-  }
-}
-
-function buildSummaryData(
-  snapshot: ActivityTrackingSnapshot,
-): TrackingSummaryData {
-  const totalSeconds = snapshot.durationMs / 1000;
-  const avgSpeedMps =
-    totalSeconds > 0 ? snapshot.distanceMeters / totalSeconds : 0;
-
-  return {
-    time: formatElapsedTime(snapshot.durationMs),
-    distance: formatDistanceKm(snapshot.distanceMeters),
-    speed: formatSpeedKmh(avgSpeedMps),
-    ascent: formatAscentMeters(snapshot.ascentMeters),
-  };
-}
-
-function toValidNumber(value: unknown): number | null {
-  const parsed = Number(value);
-
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getRouteSpeedStats(route: TrackingPoint[], durationMs: number, distanceMeters: number) {
-  const speedsMps = route
-    .map(point => getPointNumber(point, 'speed'))
-    .filter((value): value is number => value !== null && value >= 0);
-
-  const avgSpeedMps = durationMs > 0 ? distanceMeters / (durationMs / 1000) : 0;
-
-  if (speedsMps.length === 0) {
-    return {
-      velocidadMinKmh: avgSpeedMps * 3.6,
-      velocidadPromKmh: avgSpeedMps * 3.6,
-      velocidadMaxKmh: avgSpeedMps * 3.6,
-    };
-  }
-
-  const minMps = Math.min(...speedsMps);
-  const maxMps = Math.max(...speedsMps);
-
-  return {
-    velocidadMinKmh: minMps * 3.6,
-    velocidadPromKmh: avgSpeedMps * 3.6,
-    velocidadMaxKmh: maxMps * 3.6,
-  };
-}
-
-function getPointNumber(point: TrackingPoint, key: string): number | null {
-  const value = (point as unknown as Record<string, unknown>)[key];
-
-  return toValidNumber(value);
-}
-
-function normalizeRouteForApi(route: TrackingPoint[]) {
-  return route.map((point, index) => ({
-    secuencia: index + 1,
-    latitude: Number(point.latitude),
-    longitude: Number(point.longitude),
-    timestamp: getPointNumber(point, 'timestamp'),
-    speedMps: getPointNumber(point, 'speed'),
-    altitudeMeters:
-      getPointNumber(point, 'altitude') ?? getPointNumber(point, 'altitudeMeters'),
-    heading: getPointNumber(point, 'heading'),
-  }));
-}
-
-export function useActivityTracking({
-  activityType,
-  onClose,
-}: UseActivityTrackingOptions): UseActivityTrackingResult {
-  const [snapshot, setSnapshot] =
-    useState<ActivityTrackingSnapshot>(EMPTY_SNAPSHOT);
-  const [isPreparing, setIsPreparing] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [summaryVisible, setSummaryVisible] = useState(false);
-  const [summaryData, setSummaryData] = useState<TrackingSummaryData | null>(
+export function useActivityTracking(
+  activityType: ActivityType,
+): UseActivityTrackingResult {
+  const [status, setStatus] = useState<RunStatus>('preparing');
+  const [route, setRoute] = useState<TrackingPoint[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<TrackingPoint | null>(
     null,
   );
-  const [exitModalVisible, setExitModalVisible] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [distanceMeters, setDistanceMeters] = useState(0);
+  const [speedMinKmh, setSpeedMinKmh] = useState(0);
+  const [speedMaxKmh, setSpeedMaxKmh] = useState(0);
+  const [speedSumKmh, setSpeedSumKmh] = useState(0);
+  const [speedSamples, setSpeedSamples] = useState(0);
+  const [ascentMeters, setAscentMeters] = useState(0);
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [finishLoading, setFinishLoading] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+
+  const startedAtRef = useRef(Date.now());
+  const tickIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const snapshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pausedStartedAtRef = useRef<number | null>(null);
+  const pausedTotalMsRef = useRef(0);
+  const lastAltitudeRef = useRef<number | null>(null);
   const lastWeatherFetchRef = useRef(0);
+  const finishedRef = useRef(false);
 
-  const appStateRef = useRef(AppState.currentState);
+  const speedPromKmh = speedSamples > 0 ? speedSumKmh / speedSamples : 0;
 
-  const hydrateSnapshot = useCallback(
-    (nextSnapshot?: Partial<ActivityTrackingSnapshot> | null) => {
-      setSnapshot(normalizeSnapshot(nextSnapshot));
+  const refreshWeather = useCallback(async (point: TrackingPoint) => {
+    const now = Date.now();
+
+    if (now - lastWeatherFetchRef.current < WEATHER_REFRESH_MS) {
+      return;
+    }
+
+    lastWeatherFetchRef.current = now;
+    setWeatherLoading(true);
+    setWeatherError(null);
+
+    try {
+      const data = await getCurrentWeatherByLocation(point);
+      if (data) {
+        setWeather(data);
+      } else {
+        setWeatherError('Clima no disponible');
+      }
+    } catch {
+      setWeatherError('No se pudo obtener el clima');
+    } finally {
+      setWeatherLoading(false);
+    }
+  }, []);
+
+  const appendPoint = useCallback(
+    (point: TrackingPoint) => {
+      setCurrentLocation(point);
+      void refreshWeather(point);
+
+      setRoute(previousRoute => {
+        if (!shouldAppendPoint(previousRoute, point)) {
+          return previousRoute;
+        }
+
+        if (previousRoute.length > 0) {
+          const previous = previousRoute[previousRoute.length - 1];
+          const deltaMeters = distanceBetweenMeters(previous, point);
+          setDistanceMeters(value => value + deltaMeters);
+        }
+
+        const altitude =
+          point.altitude === null || point.altitude === undefined
+            ? null
+            : Number(point.altitude);
+
+        if (altitude !== null && Number.isFinite(altitude)) {
+          if (lastAltitudeRef.current !== null) {
+            const deltaAltitude = altitude - lastAltitudeRef.current;
+            if (deltaAltitude > 0) {
+              setAscentMeters(value => value + deltaAltitude);
+            }
+          }
+          lastAltitudeRef.current = altitude;
+        }
+
+        const speedKmh = normalizeNumber(point.speed, 0) * 3.6;
+        if (speedKmh > 0) {
+          setSpeedMaxKmh(value => Math.max(value, speedKmh));
+          setSpeedMinKmh(value => (value === 0 ? speedKmh : Math.min(value, speedKmh)));
+          setSpeedSumKmh(value => value + speedKmh);
+          setSpeedSamples(value => value + 1);
+        }
+
+        return [...previousRoute, point];
+      });
     },
-    [],
+    [refreshWeather],
   );
 
-  const refresh = useCallback(async () => {
-    try {
-      const current = await getNativeTrackingSnapshot();
-      hydrateSnapshot(current);
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('No se pudo refrescar el snapshot de tracking', error);
-      }
-    }
-  }, [hydrateSnapshot]);
-
-  const initializeTracking = useCallback(async () => {
-    setIsPreparing(true);
-    setErrorMessage(null);
-
-    try {
-      const currentSnapshot = normalizeSnapshot(await getNativeTrackingSnapshot());
-
-      const alreadyActive =
-        currentSnapshot.status === 'tracking' ||
-        currentSnapshot.status === 'paused';
-
-      if (alreadyActive) {
-        hydrateSnapshot(currentSnapshot);
-        return;
-      }
-
-      const startedSnapshot = await startNativeTracking(activityType);
-
-      if (!startedSnapshot) {
-        const message =
-          'No se pudieron obtener los permisos necesarios de ubicación.';
-        setErrorMessage(message);
-        return;
-      }
-
-      hydrateSnapshot(startedSnapshot);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo iniciar el seguimiento.';
-
-      setErrorMessage(message);
-      Alert.alert('Seguimiento', message);
-    } finally {
-      setIsPreparing(false);
-    }
-  }, [activityType, hydrateSnapshot]);
-
   useEffect(() => {
-    void initializeTracking();
-  }, [initializeTracking]);
+    let mounted = true;
 
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextState => {
-      const wasInBackground =
-        appStateRef.current === 'background' ||
-        appStateRef.current === 'inactive';
-
-      const isNowActive = nextState === 'active';
-
-      if (wasInBackground && isNowActive) {
-        void refresh();
-      }
-
-      appStateRef.current = nextState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [refresh]);
-
-  useEffect(() => {
-    if (summaryVisible) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      void refresh();
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [refresh, summaryVisible]);
-
-useEffect(() => {
-  const lastLocation = snapshot.lastLocation;
-
-  if (!lastLocation) {
-    return;
-  }
-
-  const now = Date.now();
-  const fiveMinutesMs = 5 * 60 * 1000;
-
-  if (now - lastWeatherFetchRef.current < fiveMinutesMs && weather) {
-    return;
-  }
-
-  let isMounted = true;
-
-  async function loadWeather() {
-    try {
-      setWeatherLoading(true);
-      setWeatherError(null);
-
-      const nextWeather = await getCurrentWeatherByLocation(lastLocation);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (nextWeather) {
-        setWeather(nextWeather);
-        lastWeatherFetchRef.current = Date.now();
-      }
-    } catch (error) {
-      if (!isMounted) {
-        return;
-      }
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo obtener el clima actual.';
-
-      setWeatherError(message);
-    } finally {
-      if (isMounted) {
-        setWeatherLoading(false);
-      }
-    }
-  }
-
-  void loadWeather();
-
-  return () => {
-    isMounted = false;
-  };
-}, [snapshot.lastLocation, weather]);
-
-  const handlePauseResume = useCallback(async () => {
-    if (isPreparing || summaryVisible) {
-      return;
-    }
-
-    try {
-      const updatedSnapshot =
-        snapshot.status === 'paused'
-          ? await resumeNativeTracking()
-          : await pauseNativeTracking();
-
-      hydrateSnapshot(updatedSnapshot);
-      setErrorMessage(null);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo cambiar el estado de la actividad.';
-
-      setErrorMessage(message);
-      Alert.alert('Actividad', message);
-    }
-  }, [hydrateSnapshot, isPreparing, snapshot.status, summaryVisible]);
-
-  const handleFinish = useCallback(async () => {
-    if (isPreparing || summaryVisible) {
-      return;
-    }
-
-    try {
-      const finalSnapshot = normalizeSnapshot(await stopNativeTracking());
-      const speedStats = getRouteSpeedStats(
-        finalSnapshot.route,
-        finalSnapshot.durationMs,
-        finalSnapshot.distanceMeters,
-      );
-
-      hydrateSnapshot(finalSnapshot);
-      setSummaryData(buildSummaryData(finalSnapshot));
-      setSummaryVisible(true);
-      setExitModalVisible(false);
-      setErrorMessage(null);
-
+    async function start() {
       try {
-        await finishTrackingSession({
-          activityType,
-          startedAt: finalSnapshot.startedAt
-            ? new Date(finalSnapshot.startedAt).toISOString()
-            : new Date(Date.now() - finalSnapshot.durationMs).toISOString(),
-          finishedAt: new Date().toISOString(),
-          distanceMeters: finalSnapshot.distanceMeters,
-          durationMs: finalSnapshot.durationMs,
-          ascentMeters: finalSnapshot.ascentMeters,
-          velocidadMinKmh: speedStats.velocidadMinKmh,
-          velocidadPromKmh: speedStats.velocidadPromKmh,
-          velocidadMaxKmh: speedStats.velocidadMaxKmh,
-          temperatureC: weather?.temperatureC ?? null,
-          apparentTemperatureC: weather?.apparentTemperatureC ?? null,
-          humidityPercent: weather?.humidityPercent ?? null,
-          windSpeedKmh: weather?.windSpeedKmh ?? null,
-          precipitationMm: weather?.precipitationMm ?? null,
-          weatherCode: weather?.weatherCode ?? null,
-          weatherCondition: weather?.condition ?? null,
-          weatherConditionLabel: weather?.conditionLabel ?? null,
-          route: normalizeRouteForApi(finalSnapshot.route),
-        });
-      } catch (saveError) {
-        const saveMessage =
-          saveError instanceof Error
-            ? saveError.message
-            : 'La actividad finalizó, pero no se pudo guardar en el servidor.';
+        await startNativeTracking(activityType);
+        await startTrackingBackgroundRunner(activityType);
 
-        setErrorMessage(saveMessage);
-
-        if (__DEV__) {
-          console.warn('[tracking] No se pudo guardar la actividad', saveError);
+        if (mounted) {
+          setStatus('running');
+        }
+      } catch (error) {
+        if (mounted) {
+          setStatus('preparing');
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo iniciar el seguimiento GPS.',
+          );
         }
       }
+    }
+
+    void start();
+
+    return () => {
+      mounted = false;
+      if (tickIntervalRef.current) {
+        clearInterval(tickIntervalRef.current);
+      }
+      if (snapshotIntervalRef.current) {
+        clearInterval(snapshotIntervalRef.current);
+      }
+      void stopNativeTracking();
+      void stopTrackingBackgroundRunner();
+    };
+  }, [activityType]);
+
+  useEffect(() => {
+    if (status !== 'running') {
+      if (tickIntervalRef.current) {
+        clearInterval(tickIntervalRef.current);
+        tickIntervalRef.current = null;
+      }
+      return;
+    }
+
+    tickIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      setElapsedMs(now - startedAtRef.current - pausedTotalMsRef.current);
+    }, TICK_MS);
+
+    return () => {
+      if (tickIntervalRef.current) {
+        clearInterval(tickIntervalRef.current);
+        tickIntervalRef.current = null;
+      }
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== 'running') {
+      if (snapshotIntervalRef.current) {
+        clearInterval(snapshotIntervalRef.current);
+        snapshotIntervalRef.current = null;
+      }
+      return;
+    }
+
+    snapshotIntervalRef.current = setInterval(async () => {
+      const snapshot = await getLastTrackingSnapshot();
+      if (snapshot) {
+        appendPoint(snapshot);
+      }
+    }, SNAPSHOT_MS);
+
+    return () => {
+      if (snapshotIntervalRef.current) {
+        clearInterval(snapshotIntervalRef.current);
+        snapshotIntervalRef.current = null;
+      }
+    };
+  }, [appendPoint, status]);
+
+  const handlePauseResume = useCallback(() => {
+    if (status === 'running') {
+      pausedStartedAtRef.current = Date.now();
+      setStatus('paused');
+      return;
+    }
+
+    if (status === 'paused') {
+      if (pausedStartedAtRef.current) {
+        pausedTotalMsRef.current += Date.now() - pausedStartedAtRef.current;
+        pausedStartedAtRef.current = null;
+      }
+      setStatus('running');
+    }
+  }, [status]);
+
+  const handleFinish = useCallback(async () => {
+    if (finishedRef.current || finishLoading) {
+      return;
+    }
+
+    finishedRef.current = true;
+    setFinishLoading(true);
+    setFinishError(null);
+
+    const finishedAt = Date.now();
+    const finalElapsedMs = Math.max(
+      elapsedMs,
+      finishedAt - startedAtRef.current - pausedTotalMsRef.current,
+    );
+
+    try {
+      if (tickIntervalRef.current) {
+        clearInterval(tickIntervalRef.current);
+        tickIntervalRef.current = null;
+      }
+      if (snapshotIntervalRef.current) {
+        clearInterval(snapshotIntervalRef.current);
+        snapshotIntervalRef.current = null;
+      }
+
+      await stopNativeTracking();
+      await stopTrackingBackgroundRunner();
+
+      await finishTrackingSession({
+        activityType,
+        startedAt: new Date(startedAtRef.current).toISOString(),
+        finishedAt: new Date(finishedAt).toISOString(),
+        distanceMeters,
+        durationMs: finalElapsedMs,
+        ascentMeters,
+        velocidadMinKmh: speedMinKmh,
+        velocidadPromKmh: speedPromKmh,
+        velocidadMaxKmh: speedMaxKmh,
+        temperatureC: weather?.temperatureC ?? null,
+        apparentTemperatureC: weather?.apparentTemperatureC ?? null,
+        humidityPercent: weather?.humidityPercent ?? null,
+        windSpeedKmh: weather?.windSpeedKmh ?? null,
+        precipitationMm: weather?.precipitationMm ?? null,
+        weatherCode: weather?.weatherCode ?? null,
+        weatherCondition: weather?.condition ?? null,
+        weatherConditionLabel: weather?.conditionLabel ?? null,
+        route: route.map((point, index) => ({
+          secuencia: index + 1,
+          latitude: point.latitude,
+          longitude: point.longitude,
+          timestamp: point.timestamp ?? null,
+          speedMps: point.speed ?? null,
+          altitudeMeters: point.altitude ?? null,
+          heading: point.heading ?? null,
+        })),
+      });
+
+      setElapsedMs(finalElapsedMs);
+      setStatus('finished');
+      setShowSummary(true);
     } catch (error) {
-      const message =
+      finishedRef.current = false;
+      setFinishError(
         error instanceof Error
           ? error.message
-          : 'No se pudo finalizar la actividad.';
-
-      setErrorMessage(message);
-      Alert.alert('Actividad', message);
+          : 'No se pudo guardar y finalizar la actividad.',
+      );
+    } finally {
+      setFinishLoading(false);
     }
   }, [
     activityType,
-    hydrateSnapshot,
-    isPreparing,
-    summaryVisible,
+    ascentMeters,
+    distanceMeters,
+    elapsedMs,
+    finishLoading,
+    route,
+    speedMaxKmh,
+    speedMinKmh,
+    speedPromKmh,
     weather,
   ]);
 
-  const openExitModal = useCallback(() => {
-    setExitModalVisible(true);
-  }, []);
-
-  const closeExitModal = useCallback(() => {
-    setExitModalVisible(false);
-  }, []);
-
-  const confirmExit = useCallback(async () => {
-    try {
-      setExitModalVisible(false);
-      await stopNativeTracking();
-      onClose?.();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo salir de la actividad.';
-
-      setErrorMessage(message);
-      Alert.alert('Actividad', message);
-    }
-  }, [onClose]);
-
-  const closeSummary = useCallback(() => {
-    setSummaryVisible(false);
-  }, []);
-
-  const openLocationSettings = useCallback(() => {
-    openNativeLocationSettings();
-  }, []);
-
-  const status = useMemo(
-    () => mapUiStatus(snapshot.status, isPreparing, summaryVisible),
-    [snapshot.status, isPreparing, summaryVisible],
-  );
-
+  const elapsedLabel = useMemo(() => formatElapsed(elapsedMs), [elapsedMs]);
   const distanceKm = useMemo(
-    () => formatDistanceKm(snapshot.distanceMeters),
-    [snapshot.distanceMeters],
+    () => (distanceMeters / 1000).toFixed(2),
+    [distanceMeters],
   );
-
-  const speedKmh = useMemo(
-    () => formatSpeedKmh(snapshot.currentSpeedMps),
-    [snapshot.currentSpeedMps],
-  );
-
-  const elapsedLabel = useMemo(
-    () => formatElapsedTime(snapshot.durationMs),
-    [snapshot.durationMs],
-  );
-
+  const speedKmh = useMemo(() => {
+    if (status !== 'running') {
+      return '0.0';
+    }
+    const lastSpeed = currentLocation?.speed;
+    const speed = normalizeNumber(lastSpeed, 0) * 3.6;
+    return speed.toFixed(1);
+  }, [currentLocation?.speed, status]);
   const ascentLabel = useMemo(
-    () => formatAscentMeters(snapshot.ascentMeters),
-    [snapshot.ascentMeters],
+    () => Math.round(ascentMeters).toString(),
+    [ascentMeters],
   );
 
   return {
-    activityType,
-    route: snapshot.route,
-    currentLocation: snapshot.lastLocation,
-    currentPoint: snapshot.lastLocation,
     status,
-    nativeStatus: snapshot.status,
-    errorMessage,
-    distanceMeters: snapshot.distanceMeters,
-    durationMs: snapshot.durationMs,
-    ascentMeters: snapshot.ascentMeters,
-    currentAltitudeMeters: snapshot.currentAltitudeMeters,
-    currentSpeedMps: snapshot.currentSpeedMps,
+    route,
+    currentLocation,
+    elapsedMs,
+    elapsedLabel,
+    distanceMeters,
     distanceKm,
     speedKmh,
-    elapsedLabel,
+    speedMinKmh,
+    speedPromKmh,
+    speedMaxKmh,
+    ascentMeters,
     ascentLabel,
-    summaryVisible,
-    summaryTitle: getSummaryTitle(activityType),
-    summaryData,
-    exitModalVisible,
-    openExitModal,
-    closeExitModal,
-    confirmExit,
-    closeSummary,
-    openLocationSettings,
-    handlePauseResume,
-    handleFinish,
-    refresh,
     weather,
     weatherLoading,
     weatherError,
+    errorMessage,
+    showSummary,
+    summary: {
+      time: elapsedLabel,
+      distance: `${distanceKm} km`,
+      speed: `${speedPromKmh.toFixed(1)} km/h`,
+      ascent: `${ascentLabel} m`,
+      weather: weather
+        ? `${weather.temperatureC.toFixed(0)} °C · ${weather.conditionLabel}`
+        : 'Sin clima',
+    },
+    finishLoading,
+    finishError,
+    handlePauseResume,
+    handleFinish,
+    closeSummary: () => setShowSummary(false),
   };
 }
