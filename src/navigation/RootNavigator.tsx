@@ -17,7 +17,6 @@ import {PetTrackingScreen} from '../screens/PetTrackingScreen';
 import {PetScreen} from '../screens/PetScreen';
 import AvatarScreen from '../screens/AvatarScreen';
 import {DashboardMetasScreen} from '../screens/DashboardMetasScreen';
-import {RouteDetailScreen} from '../screens/RouteDetailScreen';
 
 import {AppTabs} from './AppTabs';
 import {colors} from '../theme';
@@ -37,11 +36,22 @@ const navigationTheme = {
   },
 };
 
+const linking = {
+  prefixes: ['geozone://'],
+  config: {
+    screens: {
+      RunTracking: 'tracking/run',
+      RideTracking: 'tracking/ride',
+      PetTracking: 'tracking/pet',
+    },
+  },
+};
+
 export function RootNavigator() {
   const {status} = useAuth();
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -52,20 +62,16 @@ export function RootNavigator() {
         ) : status === 'authenticated' ? (
           <>
             <Stack.Screen name="MainTabs" component={AppTabs} />
-
             <Stack.Screen name="Run" component={RunScreen} />
             <Stack.Screen name="Ride" component={RideScreen} />
             <Stack.Screen name="Options" component={OptionsScreen} />
             <Stack.Screen name="Missions" component={MissionsScreen} />
-
             <Stack.Screen name="RunTracking" component={RunTrackingScreen} />
             <Stack.Screen name="RideTracking" component={RideTrackingScreen} />
             <Stack.Screen name="PetTracking" component={PetTrackingScreen} />
-
             <Stack.Screen name="Pet" component={PetScreen} />
             <Stack.Screen name="Avatar" component={AvatarScreen} />
             <Stack.Screen name="DashboardMetas" component={DashboardMetasScreen} />
-            <Stack.Screen name="RouteDetail" component={RouteDetailScreen} />
           </>
         ) : (
           <>
