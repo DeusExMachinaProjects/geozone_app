@@ -41,6 +41,20 @@ const MAX_ALLOWED_ACCURACY_METERS = 120;
 const MAX_SEGMENT_DISTANCE_METERS = 250;
 const MIN_ASCENT_DELTA_METERS = 1;
 
+/**
+ * Umbral para evitar ruido GPS estando quieto.
+ *
+ * 0.25 m/s = 0.9 km/h aprox.
+ * Si el GPS reporta menos que esto, para la app es velocidad 0.
+ */
+const GPS_STATIONARY_THRESHOLD_MPS = 0.25;
+
+/**
+ * Cuando el GPS no entrega speed confiable, usamos velocidad por segmento,
+ * pero también filtrada para evitar que el temblor del GPS parezca movimiento.
+ */
+const FALLBACK_SEGMENT_SPEED_THRESHOLD_MPS = 0.35;
+
 const trackerSession: TrackerSession = {
   watchId: null,
   currentSnapshot: createIdleTrackingSnapshot(),
@@ -72,6 +86,18 @@ function isValidNumber(value: unknown): value is number {
 
 function toSafeNumber(value: unknown): number | null {
   return isValidNumber(value) ? value : null;
+}
+
+function normalizeSpeedMps(value: unknown): number | null {
+  if (!isValidNumber(value)) {
+    return null;
+  }
+
+  if (value <= GPS_STATIONARY_THRESHOLD_MPS) {
+    return 0;
+  }
+
+  return value;
 }
 
 function clonePoint(point: TrackingPoint): TrackingPoint {
@@ -137,20 +163,31 @@ function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
   return earthRadius * c;
 }
 
-function calculateAverageSpeedMps(distanceMeters: number, elapsedMs: number) {
-  if (elapsedMs <= 0) {
+function calculateSegmentSpeedMps(
+  previousPoint: TrackingPoint | null,
+  nextPoint: TrackingPoint,
+) {
+  if (!previousPoint) {
     return 0;
   }
 
-  return distanceMeters / (elapsedMs / 1000);
+  const distanceMeters = calculateDistanceMeters(previousPoint, nextPoint);
+  const seconds = Math.max(
+    1,
+    Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
+  );
+
+  return distanceMeters / seconds;
 }
 
 function getMaxReasonableSpeedMps(activityType: ActivityType) {
   switch (activityType) {
     case 'ride':
       return 25;
+
     case 'pet':
       return 5.5;
+
     case 'run':
     default:
       return 8.5;
@@ -188,12 +225,7 @@ function shouldRecordMovement(
   }
 
   if (distanceMeters > MAX_SEGMENT_DISTANCE_METERS) {
-    const seconds = Math.max(
-      1,
-      Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
-    );
-
-    const segmentSpeedMps = distanceMeters / seconds;
+    const segmentSpeedMps = calculateSegmentSpeedMps(previousPoint, nextPoint);
 
     if (segmentSpeedMps > getMaxReasonableSpeedMps(activityType)) {
       return false;
@@ -214,12 +246,7 @@ function shouldRecordMovement(
     return false;
   }
 
-  const seconds = Math.max(
-    1,
-    Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
-  );
-
-  const segmentSpeedMps = distanceMeters / seconds;
+  const segmentSpeedMps = calculateSegmentSpeedMps(previousPoint, nextPoint);
 
   return segmentSpeedMps <= getMaxReasonableSpeedMps(activityType);
 }
@@ -345,6 +372,7 @@ async function notifySnapshotChanged(forcePersist = false) {
 
 function createPointFromPosition(position: GeoPosition): TrackingPoint {
   const timestamp = Number(position.timestamp ?? Date.now());
+  const gpsSpeedMps = normalizeSpeedMps(position.coords.speed);
 
   return {
     latitude: position.coords.latitude,
@@ -354,7 +382,7 @@ function createPointFromPosition(position: GeoPosition): TrackingPoint {
     altitude: toSafeNumber(position.coords.altitude),
     altitudeAccuracy: toSafeNumber(position.coords.altitudeAccuracy),
     heading: toSafeNumber(position.coords.heading),
-    speed: toSafeNumber(position.coords.speed),
+    speed: gpsSpeedMps,
   };
 }
 
@@ -371,6 +399,7 @@ function handleWatchError(error?: GeoError) {
   trackerSession.currentSnapshot = {
     ...trackerSession.currentSnapshot,
     errorCode: error?.code ? String(error.code) : 'LOCATION_ERROR',
+    speedMps: 0,
     lastUpdatedAt: Date.now(),
   };
 
@@ -405,6 +434,47 @@ function startWatchingPosition() {
   );
 }
 
+function calculateNextSpeedMps(params: {
+  activityType: ActivityType;
+  previousPoint: TrackingPoint | null;
+  point: TrackingPoint;
+  shouldRecord: boolean;
+}) {
+  const {activityType, previousPoint, point, shouldRecord} = params;
+
+  const gpsSpeedMps = normalizeSpeedMps(point.speed);
+
+  /**
+   * Opción B:
+   * Primero usamos la velocidad que entrega el GPS.
+   * En Android esto viene desde Location.getSpeed() mediante
+   * react-native-geolocation-service.
+   */
+  if (gpsSpeedMps !== null) {
+    return Math.min(gpsSpeedMps, getMaxReasonableSpeedMps(activityType));
+  }
+
+  /**
+   * Si el GPS no entrega velocidad, usamos segmento solo cuando realmente
+   * aceptamos el punto como movimiento válido.
+   */
+  if (!shouldRecord || !previousPoint) {
+    return 0;
+  }
+
+  const segmentSpeedMps = calculateSegmentSpeedMps(previousPoint, point);
+
+  if (segmentSpeedMps <= FALLBACK_SEGMENT_SPEED_THRESHOLD_MPS) {
+    return 0;
+  }
+
+  if (segmentSpeedMps > getMaxReasonableSpeedMps(activityType)) {
+    return 0;
+  }
+
+  return segmentSpeedMps;
+}
+
 export async function startTracker(activityType: ActivityType) {
   const now = Date.now();
 
@@ -419,6 +489,7 @@ export async function startTracker(activityType: ActivityType) {
     lastUpdatedAt: now,
     activityType,
     errorCode: null,
+    speedMps: 0,
   };
 
   trackerSession.lastPersistedAt = 0;
@@ -464,6 +535,7 @@ export async function resumeTracker() {
     isPaused: false,
     pausedAt: null,
     startedAt: Date.now(),
+    speedMps: 0,
     lastUpdatedAt: Date.now(),
     errorCode: null,
   };
@@ -527,6 +599,7 @@ export async function upsertPosition(position: GeoPosition) {
   }
 
   const previousAnchorPoint = snapshot.lastPoint;
+
   const shouldRecord = shouldRecordMovement(
     snapshot.activityType,
     previousAnchorPoint,
@@ -548,12 +621,12 @@ export async function upsertPosition(position: GeoPosition) {
     nextLastPoint = point;
   }
 
-  const liveElapsedMs = getElapsedMs(snapshot);
-
-  const nextSpeedMps =
-    toSafeNumber(point.speed) !== null && Number(point.speed) > 0
-      ? Number(point.speed)
-      : calculateAverageSpeedMps(nextDistance, liveElapsedMs);
+  const nextSpeedMps = calculateNextSpeedMps({
+    activityType: snapshot.activityType,
+    previousPoint: previousAnchorPoint,
+    point,
+    shouldRecord,
+  });
 
   trackerSession.currentSnapshot = {
     ...snapshot,
@@ -587,7 +660,10 @@ export async function hydrateTrackerFromStorage() {
     return;
   }
 
-  trackerSession.currentSnapshot = stored;
+  trackerSession.currentSnapshot = {
+    ...stored,
+    speedMps: stored.isActive && !stored.isPaused ? stored.speedMps : 0,
+  };
 
   scheduleElapsedTick();
   emitSnapshot();
@@ -600,6 +676,7 @@ export async function hydrateTrackerFromStorage() {
 
 export function subscribeTracker(listener: TrackerListener) {
   trackerSession.listeners.add(listener);
+
   listener(
     cloneSnapshot(trackerSession.currentSnapshot, {
       includeLiveElapsed: true,
