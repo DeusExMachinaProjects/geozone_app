@@ -65,11 +65,15 @@ const trackerSession: TrackerSession = {
 
 const WATCH_OPTIONS: GeoWatchOptions = {
   enableHighAccuracy: true,
-  distanceFilter: 3,
+  distanceFilter: 2,
   interval: 3000,
   fastestInterval: 1500,
-  forceRequestLocation: true,
-  showLocationDialog: true,
+};
+
+const INITIAL_POSITION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 20000,
+  maximumAge: 5000,
 };
 
 const INITIAL_POSITION_OPTIONS = {
@@ -411,27 +415,66 @@ function handleWatchError(error?: GeoError) {
 }
 
 function startWatchingPosition() {
-  stopWatchingPosition();
+  try {
+    stopWatchingPosition();
 
-  Geolocation.getCurrentPosition(
-    position => {
-      void upsertPosition(position);
-    },
-    error => {
-      handleWatchError(error);
-    },
-    INITIAL_POSITION_OPTIONS,
-  );
+    try {
+      Geolocation.getCurrentPosition(
+        position => {
+          void upsertPosition(position);
+        },
+        error => {
+          handleWatchError(error);
+        },
+        INITIAL_POSITION_OPTIONS,
+      );
+    } catch (error) {
+      handleWatchError({
+        code: 0,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Error al obtener posición inicial',
+      } as GeoError);
+    }
 
-  trackerSession.watchId = Geolocation.watchPosition(
-    position => {
-      void upsertPosition(position);
-    },
-    error => {
-      handleWatchError(error);
-    },
-    WATCH_OPTIONS,
-  );
+    try {
+      trackerSession.watchId = Geolocation.watchPosition(
+        position => {
+          void upsertPosition(position);
+        },
+        error => {
+          handleWatchError(error);
+        },
+        WATCH_OPTIONS,
+      );
+    } catch (error) {
+      trackerSession.watchId = null;
+
+      handleWatchError({
+        code: 0,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Error al iniciar seguimiento GPS',
+      } as GeoError);
+    }
+  } catch (error) {
+    trackerSession.watchId = null;
+
+    trackerSession.currentSnapshot = {
+      ...trackerSession.currentSnapshot,
+      errorCode: 'LOCATION_START_ERROR',
+      speedMps: 0,
+      lastUpdatedAt: Date.now(),
+    };
+
+    emitSnapshot();
+
+    if (__DEV__) {
+      console.warn('[tracker] startWatchingPosition fatal error', error);
+    }
+  }
 }
 
 function calculateNextSpeedMps(params: {
