@@ -55,25 +55,13 @@ const GPS_STATIONARY_THRESHOLD_MPS = 0.25;
  */
 const FALLBACK_SEGMENT_SPEED_THRESHOLD_MPS = 0.35;
 
-const trackerSession: TrackerSession = {
-  watchId: null,
-  currentSnapshot: createIdleTrackingSnapshot(),
-  listeners: new Set<TrackerListener>(),
-  elapsedTimer: null,
-  lastPersistedAt: 0,
-};
-
 const WATCH_OPTIONS: GeoWatchOptions = {
   enableHighAccuracy: true,
-  distanceFilter: 2,
+  distanceFilter: 3,
   interval: 3000,
   fastestInterval: 1500,
-};
-
-const INITIAL_POSITION_OPTIONS = {
-  enableHighAccuracy: true,
-  timeout: 20000,
-  maximumAge: 5000,
+  forceRequestLocation: true,
+  showLocationDialog: true,
 };
 
 const INITIAL_POSITION_OPTIONS = {
@@ -82,6 +70,14 @@ const INITIAL_POSITION_OPTIONS = {
   maximumAge: 5000,
   forceRequestLocation: true,
   showLocationDialog: true,
+};
+
+const trackerSession: TrackerSession = {
+  watchId: null,
+  currentSnapshot: createIdleTrackingSnapshot(),
+  listeners: new Set<TrackerListener>(),
+  elapsedTimer: null,
+  lastPersistedAt: 0,
 };
 
 function isValidNumber(value: unknown): value is number {
@@ -415,66 +411,27 @@ function handleWatchError(error?: GeoError) {
 }
 
 function startWatchingPosition() {
-  try {
-    stopWatchingPosition();
+  stopWatchingPosition();
 
-    try {
-      Geolocation.getCurrentPosition(
-        position => {
-          void upsertPosition(position);
-        },
-        error => {
-          handleWatchError(error);
-        },
-        INITIAL_POSITION_OPTIONS,
-      );
-    } catch (error) {
-      handleWatchError({
-        code: 0,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Error al obtener posición inicial',
-      } as GeoError);
-    }
+  Geolocation.getCurrentPosition(
+    position => {
+      void upsertPosition(position);
+    },
+    error => {
+      handleWatchError(error);
+    },
+    INITIAL_POSITION_OPTIONS,
+  );
 
-    try {
-      trackerSession.watchId = Geolocation.watchPosition(
-        position => {
-          void upsertPosition(position);
-        },
-        error => {
-          handleWatchError(error);
-        },
-        WATCH_OPTIONS,
-      );
-    } catch (error) {
-      trackerSession.watchId = null;
-
-      handleWatchError({
-        code: 0,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Error al iniciar seguimiento GPS',
-      } as GeoError);
-    }
-  } catch (error) {
-    trackerSession.watchId = null;
-
-    trackerSession.currentSnapshot = {
-      ...trackerSession.currentSnapshot,
-      errorCode: 'LOCATION_START_ERROR',
-      speedMps: 0,
-      lastUpdatedAt: Date.now(),
-    };
-
-    emitSnapshot();
-
-    if (__DEV__) {
-      console.warn('[tracker] startWatchingPosition fatal error', error);
-    }
-  }
+  trackerSession.watchId = Geolocation.watchPosition(
+    position => {
+      void upsertPosition(position);
+    },
+    error => {
+      handleWatchError(error);
+    },
+    WATCH_OPTIONS,
+  );
 }
 
 function calculateNextSpeedMps(params: {
