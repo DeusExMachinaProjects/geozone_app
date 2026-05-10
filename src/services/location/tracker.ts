@@ -676,72 +676,26 @@ export function getTrackerSnapshot() {
 export async function hydrateTrackerFromStorage() {
   const stored = await readTrackingSession();
 
-  /*
-   * Siempre detenemos watchers/notificación al hidratar.
-   * Esto evita que Android arranque GPS o foreground notification
-   * apenas se abre la app por una sesión vieja guardada.
-   */
-  stopWatchingPosition();
-  stopElapsedTick();
-
   if (!stored) {
     trackerSession.currentSnapshot = createIdleTrackingSnapshot();
-    trackerSession.lastPersistedAt = 0;
-
-    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
-
     emitSnapshot();
     return;
   }
 
-  /*
-   * Si la sesión ya estaba finalizada, no tiene sentido reactivarla.
-   * La limpiamos para evitar notificaciones fantasma.
-   */
-  if (stored.isFinished || !stored.isActive) {
-    trackerSession.currentSnapshot = createIdleTrackingSnapshot(
-      stored.activityType,
-    );
-    trackerSession.lastPersistedAt = 0;
+  const shouldRestoreActiveTracking =
+    stored.isActive === true &&
+    stored.isPaused === false &&
+    stored.isFinished === false;
 
-    await clearTrackingSession();
-    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
-
-    emitSnapshot();
-    return;
-  }
-
-  /*
-   * Si llegamos aquí, había una sesión activa guardada.
-   *
-   * IMPORTANTE:
-   * No la reactivamos automáticamente.
-   * La restauramos como PAUSADA para que la app no crashee al abrir.
-   *
-   * Luego, si quieres, desde la pantalla puedes permitir al usuario continuar.
-   */
-  const safeSnapshot: TrackingSnapshot = {
+  trackerSession.currentSnapshot = {
     ...stored,
-    isActive: true,
-    isPaused: true,
-    isFinished: false,
-    pausedAt: Date.now(),
-    startedAt: null,
-    speedMps: 0,
-    errorCode: null,
-    lastUpdatedAt: Date.now(),
+    speedMps: shouldRestoreActiveTracking ? stored.speedMps : 0,
   };
 
-  trackerSession.currentSnapshot = safeSnapshot;
-  trackerSession.lastPersistedAt = 0;
-
-  await writeTrackingSession(safeSnapshot);
-  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
-
+  scheduleElapsedTick();
   emitSnapshot();
-}
 
-  if (stored.isActive && !stored.isPaused && !stored.isFinished) {
+  if (shouldRestoreActiveTracking) {
     startWatchingPosition();
     await refreshNotification(trackerSession.currentSnapshot);
   }
@@ -759,4 +713,4 @@ export function subscribeTracker(listener: TrackerListener) {
   return () => {
     trackerSession.listeners.delete(listener);
   };
-}
+}}
