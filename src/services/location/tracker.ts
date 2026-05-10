@@ -42,22 +42,28 @@ const MAX_SEGMENT_DISTANCE_METERS = 250;
 const MIN_ASCENT_DELTA_METERS = 1;
 
 /**
- * Umbral para evitar ruido GPS estando quieto.
- *
+ * Evita que el ruido del GPS muestre velocidad estando quieto.
  * 0.25 m/s = 0.9 km/h aprox.
- * Si el GPS reporta menos que esto, para la app es velocidad 0.
  */
 const GPS_STATIONARY_THRESHOLD_MPS = 0.25;
 
 /**
- * Cuando el GPS no entrega speed confiable, usamos velocidad por segmento,
- * pero también filtrada para evitar que el temblor del GPS parezca movimiento.
+ * Si el GPS no entrega velocidad, usamos velocidad por segmento,
+ * pero filtrada para evitar falso movimiento.
  */
 const FALLBACK_SEGMENT_SPEED_THRESHOLD_MPS = 0.35;
 
+const trackerSession: TrackerSession = {
+  watchId: null,
+  currentSnapshot: createIdleTrackingSnapshot(),
+  listeners: new Set(),
+  elapsedTimer: null,
+  lastPersistedAt: 0,
+};
+
 const WATCH_OPTIONS: GeoWatchOptions = {
   enableHighAccuracy: true,
-  distanceFilter: 3,
+  distanceFilter: 2,
   interval: 3000,
   fastestInterval: 1500,
   forceRequestLocation: true,
@@ -70,14 +76,6 @@ const INITIAL_POSITION_OPTIONS = {
   maximumAge: 5000,
   forceRequestLocation: true,
   showLocationDialog: true,
-};
-
-const trackerSession: TrackerSession = {
-  watchId: null,
-  currentSnapshot: createIdleTrackingSnapshot(),
-  listeners: new Set<TrackerListener>(),
-  elapsedTimer: null,
-  lastPersistedAt: 0,
 };
 
 function isValidNumber(value: unknown): value is number {
@@ -146,8 +144,10 @@ function toRadians(value: number) {
 
 function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
   const earthRadius = 6371000;
+
   const latDelta = toRadians(to.latitude - from.latitude);
   const lonDelta = toRadians(to.longitude - from.longitude);
+
   const fromLat = toRadians(from.latitude);
   const toLat = toRadians(to.latitude);
 
@@ -225,7 +225,10 @@ function shouldRecordMovement(
   }
 
   if (distanceMeters > MAX_SEGMENT_DISTANCE_METERS) {
-    const segmentSpeedMps = calculateSegmentSpeedMps(previousPoint, nextPoint);
+    const segmentSpeedMps = calculateSegmentSpeedMps(
+      previousPoint,
+      nextPoint,
+    );
 
     if (segmentSpeedMps > getMaxReasonableSpeedMps(activityType)) {
       return false;
@@ -266,7 +269,10 @@ function updateAscent(
     return trackerSession.currentSnapshot.ascentMeters;
   }
 
-  const previousAltitudeAccuracy = toSafeNumber(previousPoint.altitudeAccuracy);
+  const previousAltitudeAccuracy = toSafeNumber(
+    previousPoint.altitudeAccuracy,
+  );
+
   const nextAltitudeAccuracy = toSafeNumber(nextPoint.altitudeAccuracy);
 
   if (
@@ -411,27 +417,44 @@ function handleWatchError(error?: GeoError) {
 }
 
 function startWatchingPosition() {
-  stopWatchingPosition();
+  try {
+    stopWatchingPosition();
 
-  Geolocation.getCurrentPosition(
-    position => {
-      void upsertPosition(position);
-    },
-    error => {
-      handleWatchError(error);
-    },
-    INITIAL_POSITION_OPTIONS,
-  );
+    Geolocation.getCurrentPosition(
+      position => {
+        void upsertPosition(position);
+      },
+      error => {
+        handleWatchError(error);
+      },
+      INITIAL_POSITION_OPTIONS,
+    );
 
-  trackerSession.watchId = Geolocation.watchPosition(
-    position => {
-      void upsertPosition(position);
-    },
-    error => {
-      handleWatchError(error);
-    },
-    WATCH_OPTIONS,
-  );
+    trackerSession.watchId = Geolocation.watchPosition(
+      position => {
+        void upsertPosition(position);
+      },
+      error => {
+        handleWatchError(error);
+      },
+      WATCH_OPTIONS,
+    );
+  } catch (error) {
+    trackerSession.watchId = null;
+
+    trackerSession.currentSnapshot = {
+      ...trackerSession.currentSnapshot,
+      errorCode: 'LOCATION_START_ERROR',
+      speedMps: 0,
+      lastUpdatedAt: Date.now(),
+    };
+
+    emitSnapshot();
+
+    if (__DEV__) {
+      console.warn('[tracker] startWatchingPosition fatal error', error);
+    }
+  }
 }
 
 function calculateNextSpeedMps(params: {
@@ -444,17 +467,16 @@ function calculateNextSpeedMps(params: {
 
   const gpsSpeedMps = normalizeSpeedMps(point.speed);
 
-  /**
+  /*
    * Opción B:
-   * Primero usamos la velocidad que entrega el GPS.
-   * En Android esto viene desde Location.getSpeed() mediante
-   * react-native-geolocation-service.
+   * primero usamos la velocidad que entrega el GPS.
+   * En Android viene desde Location.getSpeed() mediante react-native-geolocation-service.
    */
   if (gpsSpeedMps !== null) {
     return Math.min(gpsSpeedMps, getMaxReasonableSpeedMps(activityType));
   }
 
-  /**
+  /*
    * Si el GPS no entrega velocidad, usamos segmento solo cuando realmente
    * aceptamos el punto como movimiento válido.
    */
@@ -654,23 +676,74 @@ export function getTrackerSnapshot() {
 export async function hydrateTrackerFromStorage() {
   const stored = await readTrackingSession();
 
+  /*
+   * Siempre detenemos watchers/notificación al hidratar.
+   * Esto evita que Android arranque GPS o foreground notification
+   * apenas se abre la app por una sesión vieja guardada.
+   */
+  stopWatchingPosition();
+  stopElapsedTick();
+
   if (!stored) {
     trackerSession.currentSnapshot = createIdleTrackingSnapshot();
+    trackerSession.lastPersistedAt = 0;
+
+    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
     emitSnapshot();
     return;
   }
 
-  trackerSession.currentSnapshot = {
+  /*
+   * Si la sesión ya estaba finalizada, no tiene sentido reactivarla.
+   * La limpiamos para evitar notificaciones fantasma.
+   */
+  if (stored.isFinished || !stored.isActive) {
+    trackerSession.currentSnapshot = createIdleTrackingSnapshot(
+      stored.activityType,
+    );
+    trackerSession.lastPersistedAt = 0;
+
+    await clearTrackingSession();
+    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
+    emitSnapshot();
+    return;
+  }
+
+  /*
+   * Si llegamos aquí, había una sesión activa guardada.
+   *
+   * IMPORTANTE:
+   * No la reactivamos automáticamente.
+   * La restauramos como PAUSADA para que la app no crashee al abrir.
+   *
+   * Luego, si quieres, desde la pantalla puedes permitir al usuario continuar.
+   */
+  const safeSnapshot: TrackingSnapshot = {
     ...stored,
-    speedMps: stored.isActive && !stored.isPaused ? stored.speedMps : 0,
+    isActive: true,
+    isPaused: true,
+    isFinished: false,
+    pausedAt: Date.now(),
+    startedAt: null,
+    speedMps: 0,
+    errorCode: null,
+    lastUpdatedAt: Date.now(),
   };
 
-  scheduleElapsedTick();
+  trackerSession.currentSnapshot = safeSnapshot;
+  trackerSession.lastPersistedAt = 0;
+
+  await writeTrackingSession(safeSnapshot);
+  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
   emitSnapshot();
+}
 
   if (stored.isActive && !stored.isPaused && !stored.isFinished) {
     startWatchingPosition();
-    await refreshNotification(stored);
+    await refreshNotification(trackerSession.currentSnapshot);
   }
 }
 
