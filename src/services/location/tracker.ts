@@ -23,6 +23,12 @@ import {
   clearTrackingNotification,
 } from './notifications';
 
+import {
+  startTrackingBackgroundRunner,
+  stopTrackingBackgroundRunner,
+  updateTrackingBackgroundRunner,
+} from '../background/backgroundRunner';
+
 type TrackerListener = (snapshot: TrackingSnapshot) => void;
 
 type TrackerSession = {
@@ -41,22 +47,13 @@ const MAX_ALLOWED_ACCURACY_METERS = 120;
 const MAX_SEGMENT_DISTANCE_METERS = 250;
 const MIN_ASCENT_DELTA_METERS = 1;
 
-/**
- * Evita que el ruido del GPS muestre velocidad estando quieto.
- * 0.25 m/s = 0.9 km/h aprox.
- */
 const GPS_STATIONARY_THRESHOLD_MPS = 0.25;
-
-/**
- * Si el GPS no entrega velocidad, usamos velocidad por segmento,
- * pero filtrada para evitar falso movimiento.
- */
 const FALLBACK_SEGMENT_SPEED_THRESHOLD_MPS = 0.35;
 
 const trackerSession: TrackerSession = {
   watchId: null,
   currentSnapshot: createIdleTrackingSnapshot(),
-  listeners: new Set(),
+  listeners: new Set<TrackerListener>(),
   elapsedTimer: null,
   lastPersistedAt: 0,
 };
@@ -172,6 +169,7 @@ function calculateSegmentSpeedMps(
   }
 
   const distanceMeters = calculateDistanceMeters(previousPoint, nextPoint);
+
   const seconds = Math.max(
     1,
     Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
@@ -184,10 +182,8 @@ function getMaxReasonableSpeedMps(activityType: ActivityType) {
   switch (activityType) {
     case 'ride':
       return 25;
-
     case 'pet':
       return 5.5;
-
     case 'run':
     default:
       return 8.5;
@@ -316,8 +312,11 @@ async function refreshNotification(snapshot: TrackingSnapshot) {
   try {
     if (!snapshot.isActive || snapshot.isFinished) {
       await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+      await stopTrackingBackgroundRunner();
       return;
     }
+
+    const liveElapsedMs = getElapsedMs(snapshot);
 
     await ensureNotificationChannel(TRACKING_CHANNEL_ID);
 
@@ -325,7 +324,16 @@ async function refreshNotification(snapshot: TrackingSnapshot) {
       notificationId: TRACKING_NOTIFICATION_ID,
       channelId: TRACKING_CHANNEL_ID,
       activityType: snapshot.activityType,
-      elapsedMs: getElapsedMs(snapshot),
+      elapsedMs: liveElapsedMs,
+      distanceMeters: snapshot.distanceMeters,
+      speedMps: snapshot.speedMps,
+      ascentMeters: snapshot.ascentMeters,
+      isPaused: snapshot.isPaused,
+    });
+
+    await updateTrackingBackgroundRunner({
+      activityType: snapshot.activityType,
+      elapsedMs: liveElapsedMs,
       distanceMeters: snapshot.distanceMeters,
       speedMps: snapshot.speedMps,
       ascentMeters: snapshot.ascentMeters,
@@ -467,19 +475,10 @@ function calculateNextSpeedMps(params: {
 
   const gpsSpeedMps = normalizeSpeedMps(point.speed);
 
-  /*
-   * Opción B:
-   * primero usamos la velocidad que entrega el GPS.
-   * En Android viene desde Location.getSpeed() mediante react-native-geolocation-service.
-   */
   if (gpsSpeedMps !== null) {
     return Math.min(gpsSpeedMps, getMaxReasonableSpeedMps(activityType));
   }
 
-  /*
-   * Si el GPS no entrega velocidad, usamos segmento solo cuando realmente
-   * aceptamos el punto como movimiento válido.
-   */
   if (!shouldRecord || !previousPoint) {
     return 0;
   }
@@ -500,6 +499,8 @@ function calculateNextSpeedMps(params: {
 export async function startTracker(activityType: ActivityType) {
   const now = Date.now();
 
+  await stopTrackingBackgroundRunner();
+
   trackerSession.currentSnapshot = {
     ...createIdleTrackingSnapshot(activityType),
     isActive: true,
@@ -515,6 +516,8 @@ export async function startTracker(activityType: ActivityType) {
   };
 
   trackerSession.lastPersistedAt = 0;
+
+  await startTrackingBackgroundRunner(activityType);
 
   scheduleElapsedTick();
   startWatchingPosition();
@@ -572,6 +575,8 @@ export async function finishTracker() {
   const snapshot = trackerSession.currentSnapshot;
 
   if (!snapshot.isActive || snapshot.isFinished) {
+    await stopTrackingBackgroundRunner();
+    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
     return;
   }
 
@@ -591,7 +596,11 @@ export async function finishTracker() {
   stopWatchingPosition();
   stopElapsedTick();
 
-  await notifySnapshotChanged(true);
+  await persistSnapshot(true);
+  emitSnapshot();
+
+  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+  await stopTrackingBackgroundRunner();
 }
 
 export async function resetTracker(activityType: ActivityType = 'run') {
@@ -603,6 +612,7 @@ export async function resetTracker(activityType: ActivityType = 'run') {
 
   await clearTrackingSession();
   await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+  await stopTrackingBackgroundRunner();
 
   emitSnapshot();
 }
@@ -696,8 +706,11 @@ export async function hydrateTrackerFromStorage() {
   emitSnapshot();
 
   if (shouldRestoreActiveTracking) {
+    await startTrackingBackgroundRunner(stored.activityType);
     startWatchingPosition();
     await refreshNotification(trackerSession.currentSnapshot);
+  } else {
+    await stopTrackingBackgroundRunner();
   }
 }
 
@@ -713,4 +726,4 @@ export function subscribeTracker(listener: TrackerListener) {
   return () => {
     trackerSession.listeners.delete(listener);
   };
-}}
+}
