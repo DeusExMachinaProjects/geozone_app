@@ -9,7 +9,7 @@ import {
   stopTrackingBackgroundRunner,
   updateTrackingBackgroundRunner,
   type ActivityType,
-} from '../background/backgroundRunner';
+} from './backgroundRunner';
 
 export type TrackingLocation = {
   latitude: number;
