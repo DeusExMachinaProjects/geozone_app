@@ -1,101 +1,115 @@
 import BackgroundService from 'react-native-background-actions';
-import type {ActivityType} from '../../features/tracking/types';
+import type {
+  ActivityType,
+  TrackingSnapshot,
+} from '../location/sessionStore';
 
-type TrackingBackgroundState = {
-  activityType: ActivityType;
-  elapsedMs: number;
-  distanceMeters: number;
-  speedMps: number;
-  ascentMeters: number;
-  isPaused: boolean;
-};
-
+const TRACKING_TASK_NAME = 'GeoZoneTrackingTask';
+const TRACKING_TASK_TITLE = 'GeoZone · actividad activa';
 const DEFAULT_DELAY_MS = 1000;
 
-let currentState: TrackingBackgroundState = {
-  activityType: 'run',
-  elapsedMs: 0,
-  distanceMeters: 0,
-  speedMps: 0,
-  ascentMeters: 0,
-  isPaused: false,
+let latestSnapshot: TrackingSnapshot | null = null;
+let latestActivityType: ActivityType = 'run';
+
+type BackgroundTaskParams = {
+  delayMs?: number;
 };
 
-let runnerStartedByTracking = false;
-
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => {
+function sleep(ms: number) {
+  return new Promise<void>(resolve => {
     setTimeout(resolve, ms);
   });
-
-function pad(value: number) {
-  return String(value).padStart(2, '0');
 }
 
-function formatElapsedTime(elapsedMs: number) {
-  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+function formatDistance(distanceMeters: number): string {
+  const safeDistance = Number.isFinite(distanceMeters)
+    ? Math.max(0, distanceMeters)
+    : 0;
+
+  if (safeDistance >= 1000) {
+    return `${(safeDistance / 1000).toFixed(2)} km`;
+  }
+
+  return `${Math.round(safeDistance)} m`;
+}
+
+function formatSpeed(speedMps: number): string {
+  const safeSpeed = Number.isFinite(speedMps) ? Math.max(0, speedMps) : 0;
+  return `${(safeSpeed * 3.6).toFixed(1)} km/h`;
+}
+
+function formatElapsed(elapsedMs: number): string {
+  const safeElapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const totalSeconds = Math.floor(safeElapsed / 1000);
 
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  if (hours > 0) {
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  }
-
-  return `${pad(minutes)}:${pad(seconds)}`;
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(seconds).padStart(2, '0'),
+  ].join(':');
 }
 
-function metersToDisplay(distanceMeters: number) {
-  if (distanceMeters >= 1000) {
-    return `${(distanceMeters / 1000).toFixed(2)} km`;
-  }
-
-  return `${Math.max(0, Math.round(distanceMeters))} m`;
-}
-
-function speedToKmh(speedMps: number) {
-  return Math.max(0, speedMps * 3.6).toFixed(1);
-}
-
-function getActivityLabel(activityType: ActivityType) {
+function getActivityLabel(activityType: ActivityType): string {
   switch (activityType) {
     case 'ride':
-      return 'pedaleo';
+      return 'bicicleta';
     case 'pet':
-      return 'mascota';
+      return 'mascotas';
     case 'run':
     default:
-      return 'carrera';
+      return 'actividad';
   }
 }
 
-function buildTaskTitle() {
-  return 'GeoZone • actividad activa';
+function getLiveElapsedMs(snapshot: TrackingSnapshot): number {
+  if (
+    !snapshot.startedAt ||
+    !snapshot.isActive ||
+    snapshot.isPaused ||
+    snapshot.isFinished
+  ) {
+    return snapshot.elapsedMs;
+  }
+
+  return snapshot.elapsedMs + Math.max(0, Date.now() - snapshot.startedAt);
 }
 
-function buildTaskDesc(state: TrackingBackgroundState) {
-  const status = state.isPaused ? 'Pausado' : 'Activo';
+function buildTaskTitle(activityType: ActivityType, isPaused?: boolean): string {
+  const label = getActivityLabel(activityType);
+  return isPaused
+    ? `GeoZone · ${label} pausada`
+    : `GeoZone · ${label} activa`;
+}
+
+function buildTaskDescription(snapshot?: TrackingSnapshot | null): string {
+  if (!snapshot) {
+    return 'Distancia 0 m · Tiempo 00:00:00 · Velocidad 0.0 km/h · Ascenso 0 m';
+  }
+
+  const elapsedMs = getLiveElapsedMs(snapshot);
 
   return [
-    `Estado ${status}`,
-    `Distancia ${metersToDisplay(state.distanceMeters)}`,
-    `Tiempo ${formatElapsedTime(state.elapsedMs)}`,
-    `Velocidad ${speedToKmh(state.speedMps)} km/h`,
-    `Ascenso ${Math.max(0, Math.round(state.ascentMeters))} m`,
+    `Distancia ${formatDistance(snapshot.distanceMeters)}`,
+    `Tiempo ${formatElapsed(elapsedMs)}`,
+    `Velocidad ${formatSpeed(snapshot.speedMps)}`,
+    `Ascenso ${Math.max(0, Math.round(snapshot.ascentMeters))} m`,
   ].join(' · ');
 }
 
-function buildOptions(activityType: ActivityType) {
+function buildBackgroundOptions(activityType: ActivityType) {
   return {
-    taskName: 'GeoZoneTracking',
-    taskTitle: buildTaskTitle(),
-    taskDesc: `Iniciando ${getActivityLabel(activityType)}...`,
+    taskName: TRACKING_TASK_NAME,
+    taskTitle: buildTaskTitle(activityType, latestSnapshot?.isPaused),
+    taskDesc: buildTaskDescription(latestSnapshot),
     taskIcon: {
       name: 'ic_launcher',
       type: 'mipmap',
     },
-    color: '#0F3D91',
+    color: '#EF5A2A',
     linkingURI: 'geozone://tracking',
     parameters: {
       delayMs: DEFAULT_DELAY_MS,
@@ -103,57 +117,51 @@ function buildOptions(activityType: ActivityType) {
   };
 }
 
-async function keepAliveTask(taskData?: {delayMs?: number}) {
-  const delayMs = taskData?.delayMs ?? DEFAULT_DELAY_MS;
-
-  while (BackgroundService.isRunning()) {
-    try {
-      await BackgroundService.updateNotification({
-        taskTitle: buildTaskTitle(),
-        taskDesc: buildTaskDesc(currentState),
-      });
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[backgroundRunner] updateNotification error', error);
-      }
-    }
-
-    await sleep(delayMs);
-  }
-}
-
-export async function startTrackingBackgroundRunner(activityType: ActivityType) {
-  currentState = {
-    ...currentState,
-    activityType,
-    elapsedMs: 0,
-    distanceMeters: 0,
-    speedMps: 0,
-    ascentMeters: 0,
-    isPaused: false,
-  };
-
-  if (BackgroundService.isRunning()) {
-    runnerStartedByTracking = true;
-
-    await BackgroundService.updateNotification({
-      taskTitle: buildTaskTitle(),
-      taskDesc: buildTaskDesc(currentState),
-    });
-
+async function updateNativeBackgroundNotification() {
+  if (!BackgroundService.isRunning()) {
     return;
   }
 
-  runnerStartedByTracking = true;
+  try {
+    await BackgroundService.updateNotification({
+      taskTitle: buildTaskTitle(
+        latestSnapshot?.activityType ?? latestActivityType,
+        latestSnapshot?.isPaused,
+      ),
+      taskDesc: buildTaskDescription(latestSnapshot),
+    });
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[backgroundRunner] updateNotification error', error);
+    }
+  }
+}
+
+const keepAliveTask = async (taskData?: BackgroundTaskParams) => {
+  const delayMs = taskData?.delayMs ?? DEFAULT_DELAY_MS;
+
+  while (BackgroundService.isRunning()) {
+    await updateNativeBackgroundNotification();
+    await sleep(delayMs);
+  }
+};
+
+export async function startTrackingBackgroundRunner(
+  activityType: ActivityType,
+): Promise<void> {
+  latestActivityType = activityType;
+
+  if (BackgroundService.isRunning()) {
+    await updateNativeBackgroundNotification();
+    return;
+  }
 
   try {
     await BackgroundService.start(
       keepAliveTask,
-      buildOptions(activityType),
+      buildBackgroundOptions(activityType),
     );
   } catch (error) {
-    runnerStartedByTracking = false;
-
     if (__DEV__) {
       console.warn('[backgroundRunner] start error', error);
     }
@@ -161,32 +169,23 @@ export async function startTrackingBackgroundRunner(activityType: ActivityType) 
 }
 
 export async function updateTrackingBackgroundRunner(
-  nextState: Partial<TrackingBackgroundState>,
-) {
-  currentState = {
-    ...currentState,
-    ...nextState,
-  };
+  snapshot: TrackingSnapshot,
+): Promise<void> {
+  latestSnapshot = snapshot;
+  latestActivityType = snapshot.activityType;
 
-  if (!BackgroundService.isRunning()) {
+  if (!snapshot.isActive || snapshot.isFinished) {
+    await stopTrackingBackgroundRunner();
     return;
   }
 
-  try {
-    await BackgroundService.updateNotification({
-      taskTitle: buildTaskTitle(),
-      taskDesc: buildTaskDesc(currentState),
-    });
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[backgroundRunner] update error', error);
-    }
-  }
+  await updateNativeBackgroundNotification();
 }
 
-export async function stopTrackingBackgroundRunner() {
+export async function stopTrackingBackgroundRunner(): Promise<void> {
+  latestSnapshot = null;
+
   if (!BackgroundService.isRunning()) {
-    runnerStartedByTracking = false;
     return;
   }
 
@@ -196,20 +195,9 @@ export async function stopTrackingBackgroundRunner() {
     if (__DEV__) {
       console.warn('[backgroundRunner] stop error', error);
     }
-  } finally {
-    runnerStartedByTracking = false;
-
-    currentState = {
-      activityType: 'run',
-      elapsedMs: 0,
-      distanceMeters: 0,
-      speedMps: 0,
-      ascentMeters: 0,
-      isPaused: false,
-    };
   }
 }
 
-export function isTrackingBackgroundRunnerActive() {
-  return runnerStartedByTracking && BackgroundService.isRunning();
+export function isTrackingBackgroundRunnerRunning(): boolean {
+  return BackgroundService.isRunning();
 }

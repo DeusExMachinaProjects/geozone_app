@@ -108,7 +108,7 @@ function clonePoint(point: TrackingPoint): TrackingPoint {
   };
 }
 
-function getElapsedMs(snapshot: TrackingSnapshot, now = Date.now()) {
+function getElapsedMs(snapshot: TrackingSnapshot, now = Date.now()): number {
   if (!snapshot.startedAt) {
     return snapshot.elapsedMs;
   }
@@ -135,11 +135,14 @@ function cloneSnapshot(
   };
 }
 
-function toRadians(value: number) {
+function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
 
-function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
+function calculateDistanceMeters(
+  from: TrackingPoint,
+  to: TrackingPoint,
+): number {
   const earthRadius = 6371000;
 
   const latDelta = toRadians(to.latitude - from.latitude);
@@ -163,13 +166,12 @@ function calculateDistanceMeters(from: TrackingPoint, to: TrackingPoint) {
 function calculateSegmentSpeedMps(
   previousPoint: TrackingPoint | null,
   nextPoint: TrackingPoint,
-) {
+): number {
   if (!previousPoint) {
     return 0;
   }
 
   const distanceMeters = calculateDistanceMeters(previousPoint, nextPoint);
-
   const seconds = Math.max(
     1,
     Math.abs(nextPoint.timestamp - previousPoint.timestamp) / 1000,
@@ -178,7 +180,7 @@ function calculateSegmentSpeedMps(
   return distanceMeters / seconds;
 }
 
-function getMaxReasonableSpeedMps(activityType: ActivityType) {
+function getMaxReasonableSpeedMps(activityType: ActivityType): number {
   switch (activityType) {
     case 'ride':
       return 25;
@@ -190,7 +192,7 @@ function getMaxReasonableSpeedMps(activityType: ActivityType) {
   }
 }
 
-function shouldUsePoint(point: TrackingPoint) {
+function shouldUsePoint(point: TrackingPoint): boolean {
   if (!isValidNumber(point.latitude) || !isValidNumber(point.longitude)) {
     return false;
   }
@@ -209,7 +211,7 @@ function shouldRecordMovement(
   activityType: ActivityType,
   previousPoint: TrackingPoint | null,
   nextPoint: TrackingPoint,
-) {
+): boolean {
   if (!previousPoint) {
     return true;
   }
@@ -253,7 +255,7 @@ function shouldRecordMovement(
 function updateAscent(
   previousPoint: TrackingPoint | null,
   nextPoint: TrackingPoint,
-) {
+): number {
   if (!previousPoint) {
     return trackerSession.currentSnapshot.ascentMeters;
   }
@@ -265,10 +267,7 @@ function updateAscent(
     return trackerSession.currentSnapshot.ascentMeters;
   }
 
-  const previousAltitudeAccuracy = toSafeNumber(
-    previousPoint.altitudeAccuracy,
-  );
-
+  const previousAltitudeAccuracy = toSafeNumber(previousPoint.altitudeAccuracy);
   const nextAltitudeAccuracy = toSafeNumber(nextPoint.altitudeAccuracy);
 
   if (
@@ -287,7 +286,7 @@ function updateAscent(
   return trackerSession.currentSnapshot.ascentMeters;
 }
 
-async function persistSnapshot(force = false) {
+async function persistSnapshot(force = false): Promise<void> {
   const now = Date.now();
 
   if (!force && now - trackerSession.lastPersistedAt < 1200) {
@@ -308,15 +307,12 @@ async function persistSnapshot(force = false) {
   }
 }
 
-async function refreshNotification(snapshot: TrackingSnapshot) {
+async function refreshNotification(snapshot: TrackingSnapshot): Promise<void> {
   try {
     if (!snapshot.isActive || snapshot.isFinished) {
       await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
-      await stopTrackingBackgroundRunner();
       return;
     }
-
-    const liveElapsedMs = getElapsedMs(snapshot);
 
     await ensureNotificationChannel(TRACKING_CHANNEL_ID);
 
@@ -324,16 +320,7 @@ async function refreshNotification(snapshot: TrackingSnapshot) {
       notificationId: TRACKING_NOTIFICATION_ID,
       channelId: TRACKING_CHANNEL_ID,
       activityType: snapshot.activityType,
-      elapsedMs: liveElapsedMs,
-      distanceMeters: snapshot.distanceMeters,
-      speedMps: snapshot.speedMps,
-      ascentMeters: snapshot.ascentMeters,
-      isPaused: snapshot.isPaused,
-    });
-
-    await updateTrackingBackgroundRunner({
-      activityType: snapshot.activityType,
-      elapsedMs: liveElapsedMs,
+      elapsedMs: getElapsedMs(snapshot),
       distanceMeters: snapshot.distanceMeters,
       speedMps: snapshot.speedMps,
       ascentMeters: snapshot.ascentMeters,
@@ -346,7 +333,7 @@ async function refreshNotification(snapshot: TrackingSnapshot) {
   }
 }
 
-function emitSnapshot() {
+function emitSnapshot(): void {
   const cloned = cloneSnapshot(trackerSession.currentSnapshot, {
     includeLiveElapsed: true,
   });
@@ -356,14 +343,14 @@ function emitSnapshot() {
   });
 }
 
-function stopElapsedTick() {
+function stopElapsedTick(): void {
   if (trackerSession.elapsedTimer) {
     clearInterval(trackerSession.elapsedTimer);
     trackerSession.elapsedTimer = null;
   }
 }
 
-function scheduleElapsedTick() {
+function scheduleElapsedTick(): void {
   stopElapsedTick();
 
   const snapshot = trackerSession.currentSnapshot;
@@ -374,14 +361,17 @@ function scheduleElapsedTick() {
 
   trackerSession.elapsedTimer = setInterval(() => {
     emitSnapshot();
+
     void refreshNotification(trackerSession.currentSnapshot);
+    void updateTrackingBackgroundRunner(trackerSession.currentSnapshot);
   }, 1000);
 }
 
-async function notifySnapshotChanged(forcePersist = false) {
+async function notifySnapshotChanged(forcePersist = false): Promise<void> {
   emitSnapshot();
   await persistSnapshot(forcePersist);
   await refreshNotification(trackerSession.currentSnapshot);
+  await updateTrackingBackgroundRunner(trackerSession.currentSnapshot);
 }
 
 function createPointFromPosition(position: GeoPosition): TrackingPoint {
@@ -400,7 +390,7 @@ function createPointFromPosition(position: GeoPosition): TrackingPoint {
   };
 }
 
-function stopWatchingPosition() {
+function stopWatchingPosition(): void {
   if (trackerSession.watchId !== null) {
     Geolocation.clearWatch(trackerSession.watchId);
     trackerSession.watchId = null;
@@ -409,7 +399,7 @@ function stopWatchingPosition() {
   Geolocation.stopObserving();
 }
 
-function handleWatchError(error?: GeoError) {
+function handleWatchError(error?: GeoError): void {
   trackerSession.currentSnapshot = {
     ...trackerSession.currentSnapshot,
     errorCode: error?.code ? String(error.code) : 'LOCATION_ERROR',
@@ -424,7 +414,7 @@ function handleWatchError(error?: GeoError) {
   }
 }
 
-function startWatchingPosition() {
+function startWatchingPosition(): void {
   try {
     stopWatchingPosition();
 
@@ -470,7 +460,7 @@ function calculateNextSpeedMps(params: {
   previousPoint: TrackingPoint | null;
   point: TrackingPoint;
   shouldRecord: boolean;
-}) {
+}): number {
   const {activityType, previousPoint, point, shouldRecord} = params;
 
   const gpsSpeedMps = normalizeSpeedMps(point.speed);
@@ -496,7 +486,7 @@ function calculateNextSpeedMps(params: {
   return segmentSpeedMps;
 }
 
-export async function startTracker(activityType: ActivityType) {
+export async function startTracker(activityType: ActivityType): Promise<void> {
   const now = Date.now();
 
   await stopTrackingBackgroundRunner();
@@ -525,7 +515,7 @@ export async function startTracker(activityType: ActivityType) {
   await notifySnapshotChanged(true);
 }
 
-export async function pauseTracker() {
+export async function pauseTracker(): Promise<void> {
   const snapshot = trackerSession.currentSnapshot;
 
   if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
@@ -548,7 +538,7 @@ export async function pauseTracker() {
   await notifySnapshotChanged(true);
 }
 
-export async function resumeTracker() {
+export async function resumeTracker(): Promise<void> {
   const snapshot = trackerSession.currentSnapshot;
 
   if (!snapshot.isActive || !snapshot.isPaused || snapshot.isFinished) {
@@ -565,13 +555,15 @@ export async function resumeTracker() {
     errorCode: null,
   };
 
+  await startTrackingBackgroundRunner(snapshot.activityType);
+
   scheduleElapsedTick();
   startWatchingPosition();
 
   await notifySnapshotChanged(true);
 }
 
-export async function finishTracker() {
+export async function finishTracker(): Promise<void> {
   const snapshot = trackerSession.currentSnapshot;
 
   if (!snapshot.isActive || snapshot.isFinished) {
@@ -596,28 +588,28 @@ export async function finishTracker() {
   stopWatchingPosition();
   stopElapsedTick();
 
-  await persistSnapshot(true);
-  emitSnapshot();
-
-  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
   await stopTrackingBackgroundRunner();
+  await notifySnapshotChanged(true);
+  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
 }
 
-export async function resetTracker(activityType: ActivityType = 'run') {
+export async function resetTracker(
+  activityType: ActivityType = 'run',
+): Promise<void> {
   stopWatchingPosition();
   stopElapsedTick();
 
   trackerSession.currentSnapshot = createIdleTrackingSnapshot(activityType);
   trackerSession.lastPersistedAt = 0;
 
+  await stopTrackingBackgroundRunner();
   await clearTrackingSession();
   await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
-  await stopTrackingBackgroundRunner();
 
   emitSnapshot();
 }
 
-export async function upsertPosition(position: GeoPosition) {
+export async function upsertPosition(position: GeoPosition): Promise<void> {
   const snapshot = trackerSession.currentSnapshot;
 
   if (!snapshot.isActive || snapshot.isPaused || snapshot.isFinished) {
@@ -677,17 +669,24 @@ export async function upsertPosition(position: GeoPosition) {
   await notifySnapshotChanged();
 }
 
-export function getTrackerSnapshot() {
+export function getTrackerSnapshot(): TrackingSnapshot {
   return cloneSnapshot(trackerSession.currentSnapshot, {
     includeLiveElapsed: true,
   });
 }
 
-export async function hydrateTrackerFromStorage() {
+export async function hydrateTrackerFromStorage(): Promise<void> {
   const stored = await readTrackingSession();
 
   if (!stored) {
     trackerSession.currentSnapshot = createIdleTrackingSnapshot();
+
+    stopWatchingPosition();
+    stopElapsedTick();
+
+    await stopTrackingBackgroundRunner();
+    await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
+
     emitSnapshot();
     return;
   }
@@ -709,12 +708,18 @@ export async function hydrateTrackerFromStorage() {
     await startTrackingBackgroundRunner(stored.activityType);
     startWatchingPosition();
     await refreshNotification(trackerSession.currentSnapshot);
-  } else {
-    await stopTrackingBackgroundRunner();
+    await updateTrackingBackgroundRunner(trackerSession.currentSnapshot);
+    return;
   }
+
+  stopWatchingPosition();
+  stopElapsedTick();
+
+  await stopTrackingBackgroundRunner();
+  await clearTrackingNotification(TRACKING_NOTIFICATION_ID);
 }
 
-export function subscribeTracker(listener: TrackerListener) {
+export function subscribeTracker(listener: TrackerListener): () => void {
   trackerSession.listeners.add(listener);
 
   listener(
