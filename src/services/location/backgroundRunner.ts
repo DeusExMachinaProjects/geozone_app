@@ -1,203 +1,158 @@
 import BackgroundService from 'react-native-background-actions';
-import type {
-  ActivityType,
-  TrackingSnapshot,
-} from '../location/sessionStore';
 
-const TRACKING_TASK_NAME = 'GeoZoneTrackingTask';
-const TRACKING_TASK_TITLE = 'GeoZone · actividad activa';
-const DEFAULT_DELAY_MS = 1000;
+export type ActivityType = 'run' | 'ride' | 'pet';
 
-let latestSnapshot: TrackingSnapshot | null = null;
-let latestActivityType: ActivityType = 'run';
-
-type BackgroundTaskParams = {
-  delayMs?: number;
+export type BackgroundTrackingSnapshot = {
+  activityType?: ActivityType;
+  elapsedMs?: number;
+  distanceMeters?: number;
+  speedMps?: number;
+  ascentMeters?: number;
+  isActive?: boolean;
+  isPaused?: boolean;
+  isFinished?: boolean;
 };
 
-function sleep(ms: number) {
-  return new Promise<void>(resolve => {
+const DEFAULT_DELAY_MS = 15000;
+
+let lastSnapshot: BackgroundTrackingSnapshot | null = null;
+
+const sleep = (ms: number) =>
+  new Promise<void>(resolve => {
     setTimeout(resolve, ms);
   });
-}
 
-function formatDistance(distanceMeters: number): string {
-  const safeDistance = Number.isFinite(distanceMeters)
-    ? Math.max(0, distanceMeters)
-    : 0;
-
-  if (safeDistance >= 1000) {
-    return `${(safeDistance / 1000).toFixed(2)} km`;
-  }
-
-  return `${Math.round(safeDistance)} m`;
-}
-
-function formatSpeed(speedMps: number): string {
-  const safeSpeed = Number.isFinite(speedMps) ? Math.max(0, speedMps) : 0;
-  return `${(safeSpeed * 3.6).toFixed(1)} km/h`;
-}
-
-function formatElapsed(elapsedMs: number): string {
-  const safeElapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
-  const totalSeconds = Math.floor(safeElapsed / 1000);
-
+const formatElapsed = (elapsedMs = 0) => {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  return [
-    String(hours).padStart(2, '0'),
-    String(minutes).padStart(2, '0'),
-    String(seconds).padStart(2, '0'),
-  ].join(':');
-}
+  const hh = `${hours}`.padStart(2, '0');
+  const mm = `${minutes}`.padStart(2, '0');
+  const ss = `${seconds}`.padStart(2, '0');
 
-function getActivityLabel(activityType: ActivityType): string {
+  return `${hh}:${mm}:${ss}`;
+};
+
+const getActivityLabel = (activityType?: ActivityType) => {
   switch (activityType) {
     case 'ride':
-      return 'bicicleta';
+      return 'ciclismo';
     case 'pet':
-      return 'mascotas';
+      return 'paseo pet';
     case 'run':
     default:
       return 'actividad';
   }
-}
+};
 
-function getLiveElapsedMs(snapshot: TrackingSnapshot): number {
-  if (
-    !snapshot.startedAt ||
-    !snapshot.isActive ||
-    snapshot.isPaused ||
-    snapshot.isFinished
-  ) {
-    return snapshot.elapsedMs;
-  }
+const buildNotificationDescription = (snapshot?: BackgroundTrackingSnapshot | null) => {
+  const distanceMeters = Math.max(0, Math.round(snapshot?.distanceMeters ?? 0));
+  const elapsed = formatElapsed(snapshot?.elapsedMs ?? 0);
+  const speedKmh = Math.max(0, (snapshot?.speedMps ?? 0) * 3.6).toFixed(1);
+  const ascentMeters = Math.max(0, Math.round(snapshot?.ascentMeters ?? 0));
 
-  return snapshot.elapsedMs + Math.max(0, Date.now() - snapshot.startedAt);
-}
+  return `Distancia ${distanceMeters} m · Tiempo ${elapsed} · Velocidad ${speedKmh} km/h · Ascenso ${ascentMeters} m`;
+};
 
-function buildTaskTitle(activityType: ActivityType, isPaused?: boolean): string {
-  const label = getActivityLabel(activityType);
-  return isPaused
-    ? `GeoZone · ${label} pausada`
-    : `GeoZone · ${label} activa`;
-}
+const buildBackgroundOptions = (snapshot?: BackgroundTrackingSnapshot | null) => {
+  const activityLabel = getActivityLabel(snapshot?.activityType);
 
-function buildTaskDescription(snapshot?: TrackingSnapshot | null): string {
-  if (!snapshot) {
-    return 'Distancia 0 m · Tiempo 00:00:00 · Velocidad 0.0 km/h · Ascenso 0 m';
-  }
-
-  const elapsedMs = getLiveElapsedMs(snapshot);
-
-  return [
-    `Distancia ${formatDistance(snapshot.distanceMeters)}`,
-    `Tiempo ${formatElapsed(elapsedMs)}`,
-    `Velocidad ${formatSpeed(snapshot.speedMps)}`,
-    `Ascenso ${Math.max(0, Math.round(snapshot.ascentMeters))} m`,
-  ].join(' · ');
-}
-
-function buildBackgroundOptions(activityType: ActivityType) {
   return {
-    taskName: TRACKING_TASK_NAME,
-    taskTitle: buildTaskTitle(activityType, latestSnapshot?.isPaused),
-    taskDesc: buildTaskDescription(latestSnapshot),
+    taskName: 'GeoZoneTracking',
+    taskTitle: 'GeoZone · actividad activa',
+    taskDesc: buildNotificationDescription(snapshot),
     taskIcon: {
       name: 'ic_launcher',
       type: 'mipmap',
     },
-    color: '#EF5A2A',
+    color: '#173B8F',
     linkingURI: 'geozone://tracking',
     parameters: {
       delayMs: DEFAULT_DELAY_MS,
     },
+    progressBar: {
+      max: 100,
+      value: 0,
+      indeterminate: true,
+    },
+    taskProgressTitle: `GeoZone · ${activityLabel} en curso`,
+    taskProgressDesc: buildNotificationDescription(snapshot),
   };
-}
+};
 
-async function updateNativeBackgroundNotification() {
-  if (!BackgroundService.isRunning()) {
-    return;
-  }
-
-  try {
-    await BackgroundService.updateNotification({
-      taskTitle: buildTaskTitle(
-        latestSnapshot?.activityType ?? latestActivityType,
-        latestSnapshot?.isPaused,
-      ),
-      taskDesc: buildTaskDescription(latestSnapshot),
-    });
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[backgroundRunner] updateNotification error', error);
-    }
-  }
-}
-
-const keepAliveTask = async (taskData?: BackgroundTaskParams) => {
+const keepAliveTask = async (taskData?: {delayMs?: number}) => {
   const delayMs = taskData?.delayMs ?? DEFAULT_DELAY_MS;
 
   while (BackgroundService.isRunning()) {
-    await updateNativeBackgroundNotification();
     await sleep(delayMs);
   }
 };
 
 export async function startTrackingBackgroundRunner(
   activityType: ActivityType,
-): Promise<void> {
-  latestActivityType = activityType;
+  snapshot?: BackgroundTrackingSnapshot,
+) {
+  lastSnapshot = {
+    ...snapshot,
+    activityType,
+    isActive: true,
+    isPaused: false,
+    isFinished: false,
+  };
 
-  if (BackgroundService.isRunning()) {
-    await updateNativeBackgroundNotification();
-    return;
-  }
+  const options = buildBackgroundOptions(lastSnapshot);
 
   try {
-    await BackgroundService.start(
-      keepAliveTask,
-      buildBackgroundOptions(activityType),
-    );
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[backgroundRunner] start error', error);
+    if (BackgroundService.isRunning()) {
+      await BackgroundService.updateNotification({
+        taskTitle: options.taskTitle,
+        taskDesc: options.taskDesc,
+      });
+      return;
     }
+
+    await BackgroundService.start(keepAliveTask, options);
+  } catch (error) {
+    console.warn('[GeoZone][backgroundRunner] No se pudo iniciar el runner:', error);
   }
 }
 
 export async function updateTrackingBackgroundRunner(
-  snapshot: TrackingSnapshot,
-): Promise<void> {
-  latestSnapshot = snapshot;
-  latestActivityType = snapshot.activityType;
-
-  if (!snapshot.isActive || snapshot.isFinished) {
-    await stopTrackingBackgroundRunner();
-    return;
-  }
-
-  await updateNativeBackgroundNotification();
-}
-
-export async function stopTrackingBackgroundRunner(): Promise<void> {
-  latestSnapshot = null;
-
-  if (!BackgroundService.isRunning()) {
-    return;
-  }
+  snapshot: BackgroundTrackingSnapshot,
+) {
+  lastSnapshot = {
+    ...lastSnapshot,
+    ...snapshot,
+  };
 
   try {
-    await BackgroundService.stop();
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[backgroundRunner] stop error', error);
+    if (!BackgroundService.isRunning()) {
+      return;
     }
+
+    await BackgroundService.updateNotification({
+      taskTitle: 'GeoZone · actividad activa',
+      taskDesc: buildNotificationDescription(lastSnapshot),
+    });
+  } catch (error) {
+    console.warn('[GeoZone][backgroundRunner] No se pudo actualizar la notificación:', error);
   }
 }
 
-export function isTrackingBackgroundRunnerRunning(): boolean {
-  return BackgroundService.isRunning();
+export async function stopTrackingBackgroundRunner() {
+  lastSnapshot = null;
+
+  try {
+    if (BackgroundService.isRunning()) {
+      await BackgroundService.stop();
+    }
+  } catch (error) {
+    console.warn('[GeoZone][backgroundRunner] No se pudo detener el runner:', error);
+  }
+}
+
+export function getLastTrackingBackgroundSnapshot() {
+  return lastSnapshot;
 }
