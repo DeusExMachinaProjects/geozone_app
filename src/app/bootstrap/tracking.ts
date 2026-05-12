@@ -6,43 +6,31 @@ import {
 let bootstrapPromise: Promise<void> | null = null;
 
 const bootstrapTrackingInternal = async (): Promise<void> => {
-  await ensureHydratedTracker();
+  try {
+    await ensureHydratedTracker();
 
-  const snapshot = await getNativeTrackingSnapshot();
+    const snapshot = await getNativeTrackingSnapshot();
 
-  if (__DEV__) {
-    if (!snapshot) {
+    if (__DEV__) {
       console.log('[tracking] bootstrap snapshot', {
-        hasSnapshot: false,
-        message: 'No hay sesión de tracking activa o guardada.',
+        isActive: snapshot.isActive,
+        isPaused: snapshot.isPaused,
+        isFinished: snapshot.isFinished,
+        activityType: snapshot.activityType,
+        distanceMeters: snapshot.distanceMeters,
+        elapsedMs: snapshot.elapsedMs,
       });
-
-      return;
     }
-
-    console.log('[tracking] bootstrap snapshot', {
-      hasSnapshot: true,
-      isActive: snapshot.isActive,
-      isPaused: snapshot.isPaused,
-      isFinished: snapshot.isFinished,
-      activityType: snapshot.activityType,
-      distanceMeters: snapshot.distanceMeters,
-      elapsedMs: snapshot.elapsedMs,
-    });
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[tracking] No se pudo inicializar tracking', error);
+    }
   }
 };
 
 export const bootstrapTracking = async (): Promise<void> => {
   if (!bootstrapPromise) {
-    bootstrapPromise = bootstrapTrackingInternal().catch(error => {
-      bootstrapPromise = null;
-
-      if (__DEV__) {
-        console.warn('[tracking] No se pudo inicializar tracking', error);
-      }
-
-      throw error;
-    });
+    bootstrapPromise = bootstrapTrackingInternal();
   }
 
   return bootstrapPromise;
